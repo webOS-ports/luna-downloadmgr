@@ -1,7 +1,7 @@
 {
     "com.webos.service.downloadmanager": [
          "networkconnection.query",
-         "sleep.operation",
-         "sleep.management"
+         "sleep.management",
+         "sleep.operation"
     ]
 }

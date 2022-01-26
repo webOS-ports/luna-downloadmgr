@@ -4,10 +4,15 @@
     "trustLevel" : "oem",
     "allowedNames": ["com.webos.service.downloadmanager"],
     "permissions": [
-      {
-        "service":"com.webos.service.downloadmanager",
-        "outbound":["com.webos.service.connectionmanager","com.palm.sleep"]
-      }
+        {
+            "service":"com.webos.service.downloadmanager",
+            "outbound":[
+                "com.webos.service.connectionmanager",
+                "com.palm.sleep",
+                "com.webos.monitor*", 
+                "com.webos.lunasend-*"
+            ]
+        }
     ]
 }
 
