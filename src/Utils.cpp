@@ -54,6 +54,7 @@ bool Utils::make_dir(const std::string &path, bool withParent)
     return false;
 }
 
+/* Disable unused function
 static int rmdir_helper(const char *path, const struct stat *pStat, int flag, struct FTW *ftw)
 {
     switch(flag)
@@ -73,6 +74,7 @@ static int rmdir_helper(const char *path, const struct stat *pStat, int flag, st
 
     return 0;
 }
+*/
 
 void Utils::remove_file(const std::string &path)
 {
