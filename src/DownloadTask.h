@@ -91,7 +91,7 @@ public:
 
     long getHttpResultCode() { return _httpResultCode;}
     void setHttpResultCode(long httpResultCode) {
-        long tmp = _httpResultCode;
+        //long tmp = _httpResultCode;
         _httpResultCode = httpResultCode;
         return;
     }
@@ -99,7 +99,7 @@ public:
     long getHttpConnectCode() { return _httpConnectCode;}
     void setHttpConnectCode(long httpConnectCode)
     {
-        long tmp = _httpConnectCode;
+        //long tmp = _httpConnectCode;
         _httpConnectCode = httpConnectCode;
         return;
     }
