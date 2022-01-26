@@ -593,7 +593,7 @@ int DownloadManager::download (const std::string& caller,
         if ((curlSetOptRc = curl_easy_setopt(curlHandle, CURLOPT_RESUME_FROM_LARGE, range.first)) != CURLE_OK )
             LOG_DEBUG ("curl set opt: CURLOPT_RESUME_FROM_LARGE failed [%d]\n",curlSetOptRc);
         else
-            LOG_DEBUG ("Using range: %llu - %llu\n",range.first,range.second);
+            LOG_DEBUG ("Using range: %lu - %lu\n",range.first,range.second);
     }
 
     if (!authToken.empty() && !deviceId.empty()) {
@@ -800,7 +800,7 @@ int DownloadManager::resumeDownload(const DownloadHistoryDb::DownloadHistory& hi
     }
     else
     {
-        LOG_DEBUG ("%s: Will attempt to resume partial file [%s] at pos = %llu",__FUNCTION__,destTempFile.c_str(),completedSize);
+        LOG_DEBUG ("%s: Will attempt to resume partial file [%s] at pos = %lu",__FUNCTION__,destTempFile.c_str(),completedSize);
     }
 
     std::string destFinalFile = "";
@@ -1423,7 +1423,7 @@ size_t DownloadManager::cbHeader(CURL * taskHandle,size_t headerSize,const char 
         {
             task->bytesTotal = contentLength + task->bytesCompleted;
             task->setUpdateInterval();
-            LOG_DEBUG ("%s: Fixing up Content-Length to %llu, and this looks like a Resume download",__FUNCTION__,task->bytesTotal);
+            LOG_DEBUG ("%s: Fixing up Content-Length to %lu, and this looks like a Resume download",__FUNCTION__,task->bytesTotal);
         }
         else if (task->bytesCompleted == 0)
         {
@@ -1663,7 +1663,7 @@ size_t DownloadManager::cbReadEvent(CURL* taskHandle,size_t payloadSize,unsigned
 //        return 0; //get out
         _task->m_remove = true;
         task->bytesCompleted = 0;           //file is basically unusable here           TODO: investigate issues with append
-        LOG_DEBUG ("%s: err case: backing up to %llu bytes",__FUNCTION__,task->bytesCompleted);
+        LOG_DEBUG ("%s: err case: backing up to %lu bytes",__FUNCTION__,task->bytesCompleted);
         payloadSize = 0;            //this will kill the transfer when it is returned, below
         goto Return_cbReadEvent;
     }
@@ -1868,7 +1868,7 @@ void DownloadManager::completed_dl(DownloadTask* task)
     }
     else if (task->bytesCompleted < task->bytesTotal) {
         //sizes don't match...maybe a filesys error
-        LOG_DEBUG ("DownloadManager::completed(): Transfer error: bytesCompleted [%llu] < [%llu] bytesTotal...filesys error?",
+        LOG_DEBUG ("DownloadManager::completed(): Transfer error: bytesCompleted [%lu] < [%lu] bytesTotal...filesys error?",
                     task->bytesCompleted,task->bytesTotal);
         LOG_DEBUG ("DownloadManager::completed(): Transfer error: URL failed = %s\n",task->url.c_str());
         resultCode = DOWNLOADMANAGER_COMPLETIONSTATUS_FILECORRUPT;
@@ -2273,12 +2273,12 @@ bool DownloadManager::spaceCheckOnFs(const std::string& path,uint64_t thresholdK
     if (DownloadSettings::instance().dbg_useStatfsFake)
     {
         fs_stats.f_bfree = DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes / fs_stats.f_frsize;
-        LOG_DEBUG ("%s: USING FAKE STATFS VALUES! (free bytes specified as: %llu, free blocks simulated to: %llu )",
+        LOG_DEBUG ("%s: USING FAKE STATFS VALUES! (free bytes specified as: %lu, free blocks simulated to: %lu )",
                         __FUNCTION__,DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes,fs_stats.f_bfree);
     }
 
     uint64_t kbfree = ( ((uint64_t)(fs_stats.f_bfree) * (uint64_t)(fs_stats.f_frsize)) >> 10);
-    LOG_DEBUG ("%s: [%s] KB free = %llu vs. %llu KB threshold",__FUNCTION__,path.c_str(),kbfree,thresholdKB);
+    LOG_DEBUG ("%s: [%s] KB free = %lu vs. %lu KB threshold",__FUNCTION__,path.c_str(),kbfree,thresholdKB);
     if (kbfree  >= thresholdKB)
         return true;
     return false;
@@ -2300,13 +2300,13 @@ bool DownloadManager::spaceOnFs(const std::string& path,uint64_t& spaceFreeKB,ui
     if (DownloadSettings::instance().dbg_useStatfsFake)
     {
         fs_stats.f_bfree = DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes / fs_stats.f_frsize;
-        LOG_DEBUG ("%s: USING FAKE STATFS VALUES! (free bytes specified as: %llu, free blocks simulated to: %llu )",
+        LOG_DEBUG ("%s: USING FAKE STATFS VALUES! (free bytes specified as: %lu, free blocks simulated to: %lu )",
                 __FUNCTION__,DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes,fs_stats.f_bfree);
     }
 
     spaceFreeKB = ( ((uint64_t)(fs_stats.f_bavail) * (uint64_t)(fs_stats.f_frsize)) >> 10);
     spaceTotalKB = ( ((uint64_t)(fs_stats.f_blocks) * (uint64_t)(fs_stats.f_frsize)) >> 10);
-    LOG_DEBUG ("%s: [%s] KB free = %llu, KB total = %llu",__FUNCTION__,path.c_str(),spaceFreeKB,spaceTotalKB);
+    LOG_DEBUG ("%s: [%s] KB free = %lu, KB total = %lu",__FUNCTION__,path.c_str(),spaceFreeKB,spaceTotalKB);
     return true;
 }
 
