@@ -1042,7 +1042,7 @@ void DownloadManager::filesystemStatusCheck(const uint64_t& freeSpaceKB,const ui
 {
     uint32_t pctFull = 100 - (uint32_t)(0.5 + ((double)freeSpaceKB / (double)totalSpaceKB) * (double)100.0);
     pctFull = (pctFull <= 100 ? pctFull : 100);
-    LOG_DEBUG ("%s: Percent Full = %u (from free space KB = %llu , total space KB = %llu",__FUNCTION__,pctFull,freeSpaceKB,totalSpaceKB);
+    LOG_DEBUG ("%s: Percent Full = %u (from free space KB = %lu , total space KB = %lu",__FUNCTION__,pctFull,freeSpaceKB,totalSpaceKB);
 
     if (pctFull < DownloadSettings::instance().freespaceLowmarkFullPercent)
         return;
