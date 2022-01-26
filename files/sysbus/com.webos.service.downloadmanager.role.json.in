@@ -1,7 +1,6 @@
 {
     "exeName":"@WEBOS_INSTALL_BINDIR@/LunaDownloadMgr",
     "type": "regular",
-    "trustLevel" : "oem",
     "allowedNames": ["com.webos.service.downloadmanager"],
     "permissions": [
       {
