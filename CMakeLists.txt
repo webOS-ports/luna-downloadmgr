@@ -110,7 +110,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 #                    webos_build_daemon, RESTRICTED_PERMISSIONS give
 #                    WORLD_READ WORLD_EXECUTE extra bits)
 install(TARGETS ${CMAKE_PROJECT_NAME}
-        DESTINATION ${WEBOS_INSTALL_BINDIR}
+        DESTINATION ${WEBOS_INSTALL_SBINDIR}
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
                     GROUP_READ GROUP_EXECUTE)
 
