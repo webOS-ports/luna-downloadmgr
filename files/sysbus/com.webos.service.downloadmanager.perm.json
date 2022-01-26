@@ -1,6 +1,8 @@
 {
     "com.webos.service.downloadmanager": [
         "networking.internal",
-        "system"
+        "system",
+        "devices",
+        "sleep.internal"
     ]
 }
