@@ -12,7 +12,6 @@
         "power.operation",
         "power.management",
         "filecache.management",
-	"sleep.operation",
-	"sleep.management"
+        "system"
     ]
 }
