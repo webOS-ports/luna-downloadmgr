@@ -65,6 +65,7 @@ static LSMethod s_methods[]  = {
     { "getAllHistory",              DownloadManager::cbGetAllHistory },
     { "clearHistory",               DownloadManager::cbClearDownloadHistory },
     { "upload",                     DownloadManager::cbUpload },
+    { "filesysStatusCheck",         DownloadManager::cbFsStatusCheck},
     { "is1xMode",                   DownloadManager::cbConnectionType},
     { "allow1x",                    cbAllow1x },
     { 0, 0 },
@@ -2054,6 +2055,106 @@ bool DownloadManager::cbRequestWakeLock(LSHandle* lshandle, LSMessage *msg, void
     if (root.isNull() || !root.hasKey("returnValue")) {
         LOG_DEBUG("cbRequestWakeLock response is invalid");
         return false;
+    }
+
+    return true;
+}
+
+//->Start of API documentation comment block
+/**
+@page com_webos_service_downloadmanager com.webos.service.downloadmanager
+@{
+@section com_webos_service_downloadmanager_filesystemStatusCheck filesystemStatusCheck
+
+filesystem status
+
+@par Parameters
+Name | Required | Type | Description
+-----|----------|------|----------
+value | no | Boolean | should allow 1x
+
+@par Returns (Call)
+Name | Required | Type | Description
+-----|----------|------|----------
+returnValue | yes | Boolean | Indicates if the call was successful
+subscribed | no | Boolean | True if subscribed
+alert | no | String | on low space, can be "low", "medium", "severe" or "limit"
+
+@par Returns (Subscription)
+None
+@}
+*/
+//->End of API documentation comment block
+bool DownloadManager::cbFsStatusCheck(LSHandle* lshandle, LSMessage *msg, void *user_data)
+{
+    LSError lserror;
+    LSErrorInit(&lserror);
+
+    JUtil::Error error;
+    pbnjson::JValue reply = pbnjson::Object();
+
+    std::string pathOnFs("/media/internal");
+
+    pbnjson::JValue root = JUtil::parse(LSMessageGetPayload(msg), "", &error);
+    if (root.isNull()) {
+        reply.put("returnValue", false);
+        reply.put("errorText", error.detail());
+    }
+    else {
+        reply.put("returnValue", true);
+        
+        std::string alertType;
+        
+        if (root.hasKey("path")) {
+            pathOnFs = root["path"].asString();
+        }
+        
+        //check free space on disk
+        uint64_t spaceFreeKB = 0;
+        uint64_t spaceTotalKB = 0;
+        if (! DownloadManager::spaceOnFs(pathOnFs,spaceFreeKB,spaceTotalKB))
+        {
+            alertType = "limit";
+        }
+        else
+        {
+            bool stopMarkReached = false;
+            bool criticalAlertRaised = false;
+            DownloadManager::instance().filesystemStatusCheck(spaceFreeKB,spaceTotalKB,&criticalAlertRaised,&stopMarkReached);
+            
+            if(stopMarkReached) {
+                alertType = "severe";
+            }
+            if(criticalAlertRaised) {
+                alertType = "limit";
+            }
+        }
+
+        if( !alertType.empty()) {
+            reply.put("alert", alertType);
+        }
+
+        if (LSMessageIsSubscription(msg)) {
+
+            bool retVal = LSSubscriptionAdd(lshandle,pathOnFs.c_str(), msg, &lserror);
+
+            if (!retVal) {
+                reply.put("subscribed", false);
+                LSErrorPrint (&lserror, stderr);
+                LSErrorFree(&lserror);
+            }
+            else {
+                reply.put("subscribed", true);
+            }
+        }
+        else {
+            reply.put("subscribed", false);
+        }
+    }
+
+    if  (!LSMessageReply( lshandle, msg, JUtil::toSimpleString(reply).c_str(), &lserror )) {
+        LSErrorPrint (&lserror, stderr);
+        LSErrorFree(&lserror);
     }
 
     return true;
