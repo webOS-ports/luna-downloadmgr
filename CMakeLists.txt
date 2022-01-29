@@ -132,7 +132,9 @@ webos_build_system_bus_files()
 webos_build_configured_file(files/launch/LunaDownloadMgr SYSCONFDIR event.d)
 webos_build_configured_file(files/launch/LunaDownloadMgr.conf SYSCONFDIR init)
 webos_build_configured_file(files/launch/luna-downloadmgr.service SYSCONFDIR systemd/system)
-webos_build_configured_file(files/launch/luna-downloadmgr.sh SYSCONFDIR systemd/system/scripts)
+#webos_build_configured_file(files/launch/luna-downloadmgr.sh SYSCONFDIR systemd/system/scripts)
+
+install(PROGRAMS files/launch/luna-downloadmgr.sh DESTINATION /etc/systemd/system/scripts)
 
 file(GLOB_RECURSE SCHEMAS files/schema/*.schema)
 install(FILES ${SCHEMAS} DESTINATION ${WEBOS_INSTALL_WEBOS_SYSCONFDIR}/schemas/luna-downloadmgr)
