@@ -1,0 +1,10 @@
+{
+    "id"    : "DownloadService.filesysStatusCheck",
+    "type"  : "object",
+    "properties" : {
+        "path" : {
+            "type"     : "string",
+            "description" : "path for the filesystem to check"
+        }
+    }
+}

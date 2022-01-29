@@ -13,6 +13,7 @@
         "com.webos.service.downloadmanager/listPending",
         "com.webos.service.downloadmanager/pauseDownload",
         "com.webos.service.downloadmanager/resumeDownload",
-        "com.webos.service.downloadmanager/upload"
+        "com.webos.service.downloadmanager/upload",
+        "com.webos.service.downloadmanager/filesysStatusCheck"
     ]
 }
