@@ -1039,24 +1039,22 @@ Done:
     return true;
 }
 
-void DownloadManager::filesystemStatusCheck(const uint64_t& freeSpaceKB,const uint64_t& totalSpaceKB, bool * criticalAlertRaised, bool * stopMarkReached)
+void DownloadManager::filesystemStatusCheck(const uint64_t& freeSpaceKB,const uint64_t& totalSpaceKB, uint32_t *pctFullValue, bool * stopMarkReached)
 {
     uint32_t pctFull = 100 - (uint32_t)(0.5 + ((double)freeSpaceKB / (double)totalSpaceKB) * (double)100.0);
     pctFull = (pctFull <= 100 ? pctFull : 100);
     LOG_DEBUG ("%s: Percent Full = %u (from free space KB = %llu , total space KB = %llu",__FUNCTION__,pctFull,freeSpaceKB,totalSpaceKB);
 
+    if (pctFullValue)
+        *pctFullValue = pctFull;
+
     if (pctFull < DownloadSettings::instance().freespaceLowmarkFullPercent)
         return;
 
-    bool critical = false;
     bool stopMark = false;
     if (freeSpaceKB <= DownloadSettings::instance().freespaceStopmarkRemainingKBytes)
         stopMark = true;
-    else if (pctFull >= DownloadSettings::instance().freespaceCriticalmarkFullPercent)
-        critical = true;
 
-    if (criticalAlertRaised)
-        *criticalAlertRaised = critical;
     if (stopMarkReached)
         *stopMarkReached = stopMark;
 }
@@ -2064,21 +2062,24 @@ bool DownloadManager::cbRequestWakeLock(LSHandle* lshandle, LSMessage *msg, void
 /**
 @page com_webos_service_downloadmanager com.webos.service.downloadmanager
 @{
-@section com_webos_service_downloadmanager_filesystemStatusCheck filesystemStatusCheck
+@section com_webos_service_downloadmanager_filesysStatusCheck filesysStatusCheck
 
 filesystem status
 
 @par Parameters
 Name | Required | Type | Description
 -----|----------|------|----------
-value | no | Boolean | should allow 1x
+path | no       | String | path of the fs to check (default: "/media/internal")
 
 @par Returns (Call)
 Name | Required | Type | Description
 -----|----------|------|----------
 returnValue | yes | Boolean | Indicates if the call was successful
 subscribed | no | Boolean | True if subscribed
-alert | no | String | on low space, can be "low", "medium", "severe" or "limit"
+alert | no | String | on low space, can be "low" (90% full), "medium" (95% full), "high" (98% full) or "limit" (remaining space under limit)
+amountRemainingKB | no | Number | when alert is raised, shows amount of remaining space
+hardLimitReached | no | Boolean | true when alert == "limit"
+hardLimitKB | no | Number | when alert == "limit", shows limit value
 
 @par Returns (Subscription)
 None
@@ -2119,19 +2120,31 @@ bool DownloadManager::cbFsStatusCheck(LSHandle* lshandle, LSMessage *msg, void *
         else
         {
             bool stopMarkReached = false;
-            bool criticalAlertRaised = false;
-            DownloadManager::instance().filesystemStatusCheck(spaceFreeKB,spaceTotalKB,&criticalAlertRaised,&stopMarkReached);
+            uint32_t pctFull = 0;
+            DownloadManager::instance().filesystemStatusCheck(spaceFreeKB,spaceTotalKB,&pctFull,&stopMarkReached);
             
             if(stopMarkReached) {
-                alertType = "severe";
-            }
-            if(criticalAlertRaised) {
                 alertType = "limit";
+                reply.put("hardLimitReached", true);
+                reply.put("hardLimitKB", (int64_t)DownloadSettings::instance().freespaceStopmarkRemainingKBytes);
+            }
+            else if(pctFull >= DownloadSettings::instance().freespaceCriticalmarkFullPercent) {
+                alertType = "critical";
+            }
+            else if(pctFull >= DownloadSettings::instance().freespaceHighmarkFullPercent) {
+                alertType = "high";
+            }
+            else if(pctFull >= DownloadSettings::instance().freespaceMedmarkFullPercent) {
+                alertType = "medium";
+            }
+            else if(pctFull >= DownloadSettings::instance().freespaceLowmarkFullPercent) {
+                alertType = "low";
             }
         }
 
         if( !alertType.empty()) {
             reply.put("alert", alertType);
+            reply.put("amountRemainingKB", (int64_t)spaceFreeKB);
         }
 
         if (LSMessageIsSubscription(msg)) {
