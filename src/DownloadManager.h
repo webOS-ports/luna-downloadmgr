@@ -201,8 +201,9 @@ public:
     static bool cbListPendingDownloads(LSHandle * lshandle,LSMessage *msg,void * user_data);
     static bool cbGetAllHistory(LSHandle * lshandle,LSMessage *msg, void * user_data);
     static bool cbClearDownloadHistory(LSHandle * lshandle,LSMessage *msg,void * user_data);
+    static bool cbFsStatusCheck(LSHandle * lshandle,LSMessage *msg,void * user_data);
 
-    void filesystemStatusCheck(const uint64_t& spaceFreeKB,const uint64_t& spaceTotalKB,bool * criticalAlertRaised = 0, bool * stopMarkReached = 0);
+    void filesystemStatusCheck(const uint64_t& spaceFreeKB,const uint64_t& spaceTotalKB,uint32_t *pctFullValue = 0, bool * stopMarkReached = 0);
 
     // upload specific
     static bool cbUpload(LSHandle* lshandle, LSMessage *message,void *user_data);

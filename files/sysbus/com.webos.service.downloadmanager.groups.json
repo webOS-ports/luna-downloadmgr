@@ -1,5 +1,0 @@
-{
-    "allowedNames" : ["com.webos.service.downloadmanager"],
-    "download.operation": ["dev"],
-    "download.management": ["oem"]
-}

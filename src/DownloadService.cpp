@@ -65,6 +65,7 @@ static LSMethod s_methods[]  = {
     { "getAllHistory",              DownloadManager::cbGetAllHistory },
     { "clearHistory",               DownloadManager::cbClearDownloadHistory },
     { "upload",                     DownloadManager::cbUpload },
+    { "filesysStatusCheck",         DownloadManager::cbFsStatusCheck},
     { "is1xMode",                   DownloadManager::cbConnectionType},
     { "allow1x",                    cbAllow1x },
     { 0, 0 },
@@ -1038,24 +1039,22 @@ Done:
     return true;
 }
 
-void DownloadManager::filesystemStatusCheck(const uint64_t& freeSpaceKB,const uint64_t& totalSpaceKB, bool * criticalAlertRaised, bool * stopMarkReached)
+void DownloadManager::filesystemStatusCheck(const uint64_t& freeSpaceKB,const uint64_t& totalSpaceKB, uint32_t *pctFullValue, bool * stopMarkReached)
 {
     uint32_t pctFull = 100 - (uint32_t)(0.5 + ((double)freeSpaceKB / (double)totalSpaceKB) * (double)100.0);
     pctFull = (pctFull <= 100 ? pctFull : 100);
-    LOG_DEBUG ("%s: Percent Full = %u (from free space KB = %llu , total space KB = %llu",__FUNCTION__,pctFull,freeSpaceKB,totalSpaceKB);
+    LOG_DEBUG ("%s: Percent Full = %u (from free space KB = %lu , total space KB = %lu",__FUNCTION__,pctFull,freeSpaceKB,totalSpaceKB);
+
+    if (pctFullValue)
+        *pctFullValue = pctFull;
 
     if (pctFull < DownloadSettings::instance().freespaceLowmarkFullPercent)
         return;
 
-    bool critical = false;
     bool stopMark = false;
     if (freeSpaceKB <= DownloadSettings::instance().freespaceStopmarkRemainingKBytes)
         stopMark = true;
-    else if (pctFull >= DownloadSettings::instance().freespaceCriticalmarkFullPercent)
-        critical = true;
 
-    if (criticalAlertRaised)
-        *criticalAlertRaised = critical;
     if (stopMarkReached)
         *stopMarkReached = stopMark;
 }
@@ -2054,6 +2053,121 @@ bool DownloadManager::cbRequestWakeLock(LSHandle* lshandle, LSMessage *msg, void
     if (root.isNull() || !root.hasKey("returnValue")) {
         LOG_DEBUG("cbRequestWakeLock response is invalid");
         return false;
+    }
+
+    return true;
+}
+
+//->Start of API documentation comment block
+/**
+@page com_webos_service_downloadmanager com.webos.service.downloadmanager
+@{
+@section com_webos_service_downloadmanager_filesysStatusCheck filesysStatusCheck
+
+filesystem status
+
+@par Parameters
+Name | Required | Type | Description
+-----|----------|------|----------
+path | no       | String | path of the fs to check (default: "/media/internal")
+
+@par Returns (Call)
+Name | Required | Type | Description
+-----|----------|------|----------
+returnValue | yes | Boolean | Indicates if the call was successful
+subscribed | no | Boolean | True if subscribed
+alert | no | String | on low space, can be "low" (90% full), "medium" (95% full), "high" (98% full) or "limit" (remaining space under limit)
+amountRemainingKB | no | Number | when alert is raised, shows amount of remaining space
+hardLimitReached | no | Boolean | true when alert == "limit"
+hardLimitKB | no | Number | when alert == "limit", shows limit value
+
+@par Returns (Subscription)
+None
+@}
+*/
+//->End of API documentation comment block
+bool DownloadManager::cbFsStatusCheck(LSHandle* lshandle, LSMessage *msg, void *user_data)
+{
+    LSError lserror;
+    LSErrorInit(&lserror);
+
+    JUtil::Error error;
+    pbnjson::JValue reply = pbnjson::Object();
+
+    std::string pathOnFs("/media/internal");
+
+    pbnjson::JValue root = JUtil::parse(LSMessageGetPayload(msg), "", &error);
+    if (root.isNull()) {
+        reply.put("returnValue", false);
+        reply.put("errorText", error.detail());
+    }
+    else {
+        reply.put("returnValue", true);
+        
+        std::string alertType;
+        
+        if (root.hasKey("path")) {
+            pathOnFs = root["path"].asString();
+        }
+        
+        //check free space on disk
+        uint64_t spaceFreeKB = 0;
+        uint64_t spaceTotalKB = 0;
+        if (! DownloadManager::spaceOnFs(pathOnFs,spaceFreeKB,spaceTotalKB))
+        {
+            alertType = "limit";
+        }
+        else
+        {
+            bool stopMarkReached = false;
+            uint32_t pctFull = 0;
+            DownloadManager::instance().filesystemStatusCheck(spaceFreeKB,spaceTotalKB,&pctFull,&stopMarkReached);
+            
+            if(stopMarkReached) {
+                alertType = "limit";
+                reply.put("hardLimitReached", true);
+                reply.put("hardLimitKB", (int64_t)DownloadSettings::instance().freespaceStopmarkRemainingKBytes);
+            }
+            else if(pctFull >= DownloadSettings::instance().freespaceCriticalmarkFullPercent) {
+                alertType = "critical";
+            }
+            else if(pctFull >= DownloadSettings::instance().freespaceHighmarkFullPercent) {
+                alertType = "high";
+            }
+            else if(pctFull >= DownloadSettings::instance().freespaceMedmarkFullPercent) {
+                alertType = "medium";
+            }
+            else if(pctFull >= DownloadSettings::instance().freespaceLowmarkFullPercent) {
+                alertType = "low";
+            }
+        }
+
+        if( !alertType.empty()) {
+            reply.put("alert", alertType);
+            reply.put("amountRemainingKB", (int64_t)spaceFreeKB);
+        }
+
+        if (LSMessageIsSubscription(msg)) {
+
+            bool retVal = LSSubscriptionAdd(lshandle,pathOnFs.c_str(), msg, &lserror);
+
+            if (!retVal) {
+                reply.put("subscribed", false);
+                LSErrorPrint (&lserror, stderr);
+                LSErrorFree(&lserror);
+            }
+            else {
+                reply.put("subscribed", true);
+            }
+        }
+        else {
+            reply.put("subscribed", false);
+        }
+    }
+
+    if  (!LSMessageReply( lshandle, msg, JUtil::toSimpleString(reply).c_str(), &lserror )) {
+        LSErrorPrint (&lserror, stderr);
+        LSErrorFree(&lserror);
     }
 
     return true;
