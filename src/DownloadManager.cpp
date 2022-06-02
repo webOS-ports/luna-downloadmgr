@@ -220,7 +220,7 @@ bool DownloadManager::isPathInMedia(const std::string& path) {
 
 bool DownloadManager::isPrivileged(const std::string& sender)
 {
-    if(sender.find("com.palm.") == 0 || sender.find("com.webos.") == 0 || sender.find("com.lge.") == 0 )
+    if(sender.find("com.palm.") == 0 || sender.find("com.webos.") == 0 || sender.find("com.lge.") == 0 || sender.find("org.webosports.") == 0 )
         return true;
 
     return false;
