@@ -25,6 +25,8 @@ public:
     pbnjson::JSchema resolve(const ResolutionRequest &request, JSchemaResolutionResult &result)
     {
         //TODO : If we use cached schema here, resolve fail. Is it pbnjson bug? or misusage?
+        // uncached, and without passing ourselves back down: a schema that
+        // $refs itself would otherwise recurse forever
         pbnjson::JSchema resolved = JUtil::instance().loadSchema(request.resource(), false);
         if (!resolved.isInitialized())
         {
@@ -36,101 +38,6 @@ public:
         result = SCHEMA_RESOLVED;
         return resolved;
     }
-};
-
-//TODO : JErrorHandler doesn't pass detail reason. Do we have to modify pbnjson library?
-class DefaultErrorHandler : public pbnjson::JErrorHandler
-{
-public:
-    DefaultErrorHandler()
-        : m_code(JUtil::Error::None),
-          m_detailCode(0)
-    {
-    }
-
-    JUtil::Error::ErrorCode getCode()
-    {
-        return m_code;
-    }
-
-    std::string getReason()
-    {
-        return m_reason;
-    }
-
-    virtual void syntax(pbnjson::JParser *ctxt, SyntaxError code, const std::string& reason)
-    {
-        LOG_WARNING_PAIRS(LOGID_JSON_PARSE_SYNTX_ERR,2,PMLOGKFV("ERRCODE","%d",code),PMLOGKS("REASON",reason.c_str()),"");
-
-    }
-    virtual void schema(pbnjson::JParser *ctxt, SchemaError code, const std::string& reason)
-    {
-        m_code = JUtil::Error::Schema;
-        m_detailCode = code;
-        m_reason = makeReason(m_detailCode, reason);
-        LOG_WARNING_PAIRS(LOGID_JSON_PARSE_SCHMA_ERR,2,PMLOGKFV("ERRCODE","%d",code),PMLOGKS("REASON",reason.c_str()),"");
-
-    }
-    virtual void misc(pbnjson::JParser *ctxt, const std::string& reason)
-    {
-        if (m_code == JUtil::Error::None)
-        {
-            m_code = JUtil::Error::Parse;
-            m_reason = reason;
-        }
-        LOG_WARNING_PAIRS(LOGID_JSON_PARSE_MISC_ERR,1,PMLOGKS("REASON",reason.c_str()),"");
-    }
-    virtual void badObject(pbnjson::JParser *ctxt, BadObject code)
-    {
-       LOG_WARNING_PAIRS(LOGID_JSON_PARSE_BAD_OBJ,1,PMLOGKFV("ERRCODE","%d",code),"");
-
-    }
-    virtual void badArray(pbnjson::JParser *ctxt, BadArray code)
-    {
-       LOG_WARNING_PAIRS(LOGID_JSON_PARSE_BAD_ARRY,1,PMLOGKFV("ERRCODE","%d",code),"");
-
-    }
-    virtual void badString(pbnjson::JParser *ctxt, const std::string& str)
-    {
-        LOG_WARNING_PAIRS(LOGID_JSON_PARSE_BAD_STR,1,PMLOGKS("ERRTEXT",str.c_str()),"");
-
-    }
-    virtual void badNumber(pbnjson::JParser *ctxt, const std::string& number)
-    {
-        LOG_WARNING_PAIRS(LOGID_JSON_PARSE_BAD_NUM,1,PMLOGKS("ERRCODE",number.c_str()),"");
-    }
-    virtual void badBoolean(pbnjson::JParser *ctxt)
-    {
-        LOG_WARNING_PAIRS(LOGID_JSON_PARSE_BAD_BOOLEAN,0,"json parse bad boolean.");
-
-    }
-    virtual void badNull(pbnjson::JParser *ctxt)
-    {
-        LOG_WARNING_PAIRS(LOGID_JSON_PARSE_BAD_NULL,0,"json parse bad null.");
-
-    }
-    virtual void parseFailed(pbnjson::JParser *ctxt, const std::string& reason)
-    {
-        LOG_WARNING_PAIRS(LOGID_JSON_PARSE_FAIL, 1, PMLOGKS("ERRTEXT","Required parameters not provided"),"");
-
-    }
-
-protected:
-    static std::string makeReason(unsigned int pbnjsonError, std::string reason)
-    {
-        switch(pbnjsonError)
-        {
-        case JErrorHandler::ERR_SCHEMA_MISSING_REQUIRED_KEY: return reason + std::string(" is required but it is missing");
-        case JErrorHandler::ERR_SCHEMA_UNEXPECTED_TYPE: return reason + std::string(" type is not expected");
-        default: return reason + std::string(" Unknown error");
-        }
-        return reason;
-    }
-
-protected:
-    JUtil::Error::ErrorCode m_code;
-    unsigned int m_detailCode;
-    std::string m_reason;
 };
 
 JUtil::Error::Error()
@@ -176,22 +83,46 @@ JUtil::~JUtil()
 
 pbnjson::JValue JUtil::parse(const char *rawData, const std::string &schemaName, Error *error, pbnjson::JResolver *schemaResolver)
 {
+    if (!rawData)
+    {
+        if (error) error->set(Error::Parse, "no input");
+        return pbnjson::JValue();
+    }
+
     DefaultResolver resolver;
     if (!schemaResolver)
         schemaResolver = &resolver;
 
-    pbnjson::JSchema schema = JUtil::instance().loadSchema(schemaName, true);
+    // $ref links are resolved inside loadSchema() now: JDomParser(JResolver*)
+    // and the JErrorHandler overload of parse() are both gone in pbnjson 3.0,
+    // and JSchema::resolve() is the documented replacement.
+    pbnjson::JSchema schema = JUtil::instance().loadSchema(schemaName, true, schemaResolver);
     if (!schema.isInitialized())
     {
         if (error) error->set(Error::Schema);
         return pbnjson::JValue();
     }
 
-    DefaultErrorHandler errorHandler;
-    pbnjson::JDomParser parser(schemaResolver);
-    if (!parser.parse(rawData, schema, &errorHandler))
+    pbnjson::JDomParser parser;
+    if (!parser.parse(rawData, schema))
     {
-        if (error) error->set(errorHandler.getCode(), errorHandler.getReason().c_str());
+        // JParser::getError() carries the message DefaultErrorHandler used to
+        // assemble. It does not say whether the input was malformed or merely
+        // failed validation, and callers surface Error::code() as well as
+        // detail(), so re-parse without the schema to tell the two apart. Only
+        // the failure path pays for that.
+        const char *detail = parser.getError();
+        Error::ErrorCode code = Error::Parse;
+        if (!schemaName.empty())
+        {
+            pbnjson::JDomParser schemaless;
+            if (schemaless.parse(rawData))
+                code = Error::Schema;   // valid JSON, rejected by the schema
+        }
+        LOG_WARNING_PAIRS(LOGID_JSON_PARSE_FAIL, 2,
+                          PMLOGKS("SCHEMA", schemaName.empty() ? "(none)" : schemaName.c_str()),
+                          PMLOGKS("ERRTEXT", (detail && *detail) ? detail : "unspecified"), "");
+        if (error) error->set(code, detail);
         return pbnjson::JValue();
     }
 
@@ -215,13 +146,17 @@ pbnjson::JValue JUtil::parseFile(const std::string &path, const std::string &sch
 
 std::string JUtil::toSimpleString(pbnjson::JValue json)
 {
-    return pbnjson::JGenerator::serialize(json, pbnjson::JSchemaFragment("{}"));
+    // AllSchema() is a shared "accept anything" schema; JSchemaFragment("{}")
+    // parsed the same schema text on every single call, and its own header calls
+    // it a temporary convenience class.
+    return pbnjson::JGenerator::serialize(json, pbnjson::JSchema::AllSchema());
 }
 
-pbnjson::JSchema JUtil::loadSchema(const std::string& schemaName, bool cache)
+pbnjson::JSchema JUtil::loadSchema(const std::string& schemaName, bool cache,
+                                   pbnjson::JResolver *resolver)
 {
     if (schemaName.empty())
-        return pbnjson::JSchemaFragment("{}");
+        return pbnjson::JSchema::AllSchema();
 
     if (cache)
     {
@@ -230,9 +165,25 @@ pbnjson::JSchema JUtil::loadSchema(const std::string& schemaName, bool cache)
             return it->second;
     }
 
-    pbnjson::JSchema schema = pbnjson::JSchemaFile(DownloadSettings::instance().schemaPath + schemaName + ".schema");
+    const std::string path = DownloadSettings::instance().schemaPath + schemaName + ".schema";
+    pbnjson::JSchema schema = pbnjson::JSchema::fromFile(path.c_str());
     if (!schema.isInitialized())
+    {
+        LOG_WARNING_PAIRS(LOGID_SCHEMA_IO_ERROR, 2, PMLOGKS("SCHEMA", path.c_str()),
+                          PMLOGKS("ERRTEXT", schema.errorString().c_str()), "");
         return schema;
+    }
+
+    // Resolve $ref links now rather than at parse time. None of this component's
+    // schemas currently use $ref, so this is normally a no-op; doing it before
+    // the schema is cached means it happens once per schema instead of once per
+    // request, which is the whole point of the pbnjson 3.0 change.
+    if (resolver && !schema.resolve(*resolver))
+    {
+        LOG_WARNING_PAIRS(LOGID_SCHEMA_IO_ERROR, 2, PMLOGKS("SCHEMA", path.c_str()),
+                          PMLOGKS("ERRTEXT", "failed to resolve external references"), "");
+        return pbnjson::JSchema::NullSchema();
+    }
 
     if (cache)
     {

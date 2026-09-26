@@ -57,7 +57,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-41 assertions over the parts that can be exercised without a live luna bus:
+62 assertions over the parts that can be exercised without a live luna bus:
 
 - `test_urlrep` — scheme extraction (what the download security check keys off),
   malformed URLs, query dissection, the directory-URL case that makes
@@ -76,6 +76,18 @@ ctest --test-dir build --output-on-failure
 - `test_fsstatus` — the percentage arithmetic in `filesystemStatusCheck()`,
   including the zero-sized filesystem that `filesysStatusCheck {"path":"/proc"}`
   produces, and the connection-name round trip that the history db depends on.
+- `test_jutil` — schema validation, against schema files the test writes itself
+  so it does not need the component installed. Covers the accept and reject
+  paths and, specifically, that `Error::code()` still distinguishes
+  `Error::Parse` (not JSON) from `Error::Schema` (JSON the schema refuses),
+  which is what a caller sees as `errorText`.
+- `test_upload` — the multipart body, checked on the wire. Each case stands up a
+  throwaway loopback HTTP server, runs a real transfer through the same easy
+  handle `UploadTask` configured, and asserts on the request that arrived: the
+  boundary, each part's `name=`, the inline data, the file contents and derived
+  `filename=`, the per-part `Content-Type`, and that a part with no content type
+  gets no empty `Content-Type` header. Also that a buffer upload's body survives
+  its source `std::string` going out of scope.
 
 `tests/unit/test_support.cpp` supplies `gMainLoop`, which the daemon defines in
 `Main.cpp`. The tests link `LunaDownloadMgrCore`, which is every source *except*
@@ -215,19 +227,21 @@ unnoticed.
 With no `--sysroot` it runs cppcheck only, which still catches a useful amount
 with no cross-compile setup.
 
-## Known remaining warnings
+## Warnings
 
-The tree is warning-free under `-Wall -Wextra -Wshadow -Wformat=2` on all three
-targets. What is left is deprecation notices from dependencies, which need an
-API migration rather than a fix, and are therefore listed here rather than
-silenced:
+The tree builds with **no warnings at all** - not even third-party deprecation
+notices - under `-Wall -Wextra -Wshadow -Wformat=2` for armv7, aarch64 and
+x86-64. Both deprecated dependency APIs have been migrated:
 
-- `curl_formadd` / `CURLFORM_*` / `CURLOPT_HTTPPOST` / `curl_formfree` in
-  `UploadTask.cpp`, deprecated since libcurl 7.56 in favour of the
-  `curl_mime_*` API. Migrating changes how the multipart body is built, so it
-  wants its own change with the upload stress scenario exercised against a real
-  endpoint.
-- `pbnjson::JValue::begin/end`, `JDomParser(JResolver*)`,
-  `JDomParser::parse(..., JErrorHandler*)` and `JSchemaFile` in
-  `DownloadService.cpp` and `JUtil.cpp`. The replacements are
-  `JValue::children()`, `JSchema::resolve()` and `JSchema::fromFile()`.
+- libcurl's form API (`curl_formadd`, `CURLFORM_*`, `CURLOPT_HTTPPOST`,
+  `curl_formfree`), deprecated since 7.56, is now `curl_mime_*` /
+  `CURLOPT_MIMEPOST`. `test_upload` pins the resulting body on the wire.
+- pbnjson's `JValue::begin()`/`end()`, `JDomParser(JResolver*)`,
+  `JDomParser::parse(..., JErrorHandler*)` and `JSchemaFile` are now
+  `JValue::children()`, `JSchema::fromFile()`, `JSchema::resolve()` at load
+  time and `parse()` without an error handler. `test_jutil` pins the
+  validation behaviour, including the error classification that the removed
+  `JErrorHandler` used to provide.
+
+Keeping it that way is what `-DENABLE_WERROR=ON` and `tools/analyze.sh` are
+for. Run the analyzer for all three architectures before merging.

@@ -22,6 +22,7 @@ set(UNIT_TESTS
     test_settings
     test_taskjson
     test_fsstatus
+    test_jutil
     test_upload)
 
 foreach(t ${UNIT_TESTS})

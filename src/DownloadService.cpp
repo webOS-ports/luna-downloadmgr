@@ -844,21 +844,18 @@ Done:
             pbnjson::JValue statusObj = JUtil::parse(it->m_downloadRecordJsonString.c_str(), std::string(""));
             if (!statusObj.isNull())
             {
-                for(pbnjson::JValue::ObjectIterator statusIt = statusObj.begin(); statusIt != statusObj.end(); ++statusIt)
+                // children() rather than begin()/end(), which pbnjson deprecated
+                if (statusObj.hasKey("target"))
                 {
-                    std::string strKey = (*statusIt).first.asString();
-                    if (strKey == std::string("target"))
+                    std::string strVal = statusObj["target"].asString();
+                    if (doesExistOnFilesystem(strVal.c_str()))
                     {
-                       std::string strVal = (*statusIt).second.asString();
-                       if (doesExistOnFilesystem(strVal.c_str()))
-                        {
-                            item.put("fileExistsOnFilesys", true);
-                            item.put("fileSizeOnFilesys", filesizeOnFilesystem(strVal.c_str()));
-                        }
-                        else
-                        {
-                            item.put("fileExistsOnFilesys", false);
-                        }
+                        item.put("fileExistsOnFilesys", true);
+                        item.put("fileSizeOnFilesys", filesizeOnFilesystem(strVal.c_str()));
+                    }
+                    else
+                    {
+                        item.put("fileExistsOnFilesys", false);
                     }
                 }
             }
@@ -1260,9 +1257,9 @@ Done:
             responseRoot.put("errorText", std::string("db_error"));
         }
         else {
-            for(pbnjson::JValue::ObjectIterator it = resultObject.begin(); it != resultObject.end(); ++it )
+            for (const pbnjson::JValue::KeyValue &field : resultObject.children())
             {
-                responseRoot.put((*it).first.asString(), (*it).second);
+                responseRoot.put(field.first.asString(), field.second);
             }
             responseRoot.put("owner", historyCaller);
             responseRoot.put("interface", historyInterface);
@@ -1481,9 +1478,10 @@ bool DownloadManager::cbUpload (LSHandle* lshandle, LSMessage* msg, void* user_d
 
     jo_cookies = root["cookies"];
     if (!jo_cookies.isNull()) {
-        for(pbnjson::JValue::ObjectIterator it = jo_cookies.begin(); it != jo_cookies.end(); ++it )
+        for (const pbnjson::JValue::KeyValue &cookie : jo_cookies.children())
         {
-            cookies.push_back(std::pair<std::string,std::string>((*it).first.asString(), (*it).second.asString()));
+            cookies.push_back(std::pair<std::string,std::string>(cookie.first.asString(),
+                                                                cookie.second.asString()));
         }
     }
 

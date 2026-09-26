@@ -62,15 +62,6 @@
 #define LOGID_SRVC_INIT_FAIL                            "SRVC_INIT_FAIL"                      // Appinstalld service initialization failed
 #define LOGID_CONF_FILE_ERR                             "CONF_FILE_ERR"                       // Conf file data is empty to load settings
 #define LOGID_SCHEMA_IO_ERROR                           "SCHEMA_IO_ERR"                       // JSchema resolve fail
-#define LOGID_JSON_PARSE_SYNTX_ERR                      "JSON_SYNTX_ERR"                      // json parse syntax error
-#define LOGID_JSON_PARSE_SCHMA_ERR                      "JSON_SCHMA_ERR"                      // json parse schema error
-#define LOGID_JSON_PARSE_MISC_ERR                       "JSON_MISC_ERR"                       // json parse misc error
-#define LOGID_JSON_PARSE_BAD_OBJ                        "JSON_BAD_OBJ"                        // json parse bad object
-#define LOGID_JSON_PARSE_BAD_ARRY                       "JSON_BAD_ARRY"                       // json parse bad array
-#define LOGID_JSON_PARSE_BAD_STR                        "JSON_BAD_STR"                        // json parse bad string
-#define LOGID_JSON_PARSE_BAD_NUM                        "JSON_BAD_NUM"                        // json parse bad number
-#define LOGID_JSON_PARSE_BAD_BOOLEAN                    "JSON_BAD_BOOL"                       // json parse bad boolean
-#define LOGID_JSON_PARSE_BAD_NULL                       "JSON_BAD_NULL"                       // json parse bad null
 #define LOGID_JSON_PARSE_FAIL                           "JSON_PARSE_FAIL"                     // json parse failed
 
 /** use these for key-value pair printing with no free text format*/
