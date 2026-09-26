@@ -1381,18 +1381,25 @@ size_t DownloadManager::cbHeader(CURL * taskHandle,size_t headerSize,const char 
         return headerSize;
     }
 
-    std::string header = headerText;
+    // CURLOPT_HEADERFUNCTION hands over exactly headerSize bytes and does not
+    // NUL-terminate them, so the buffer has to be bounded explicitly - the
+    // std::string(const char*) constructor would read past the end of
+    // server-controlled data looking for a terminator.
+    std::string header(headerText, headerSize);
 
     ////LOG_DEBUG ("cbHeader(): %s\n",header.c_str());
     //find the :
-    size_t labelendpos = header.find(":",0);
+    size_t labelendpos = header.find(':', 0);
     if (labelendpos == std::string::npos) {
         //LOG_DEBUG ("%s: header string = %s (Function-Exit-Early)",__FUNCTION__,header.c_str());
         return headerSize;
     }
 
     std::string headerLabel = header.substr(0,labelendpos);
-    std::transform(headerLabel.begin(), headerLabel.end(), headerLabel.begin(), tolower);
+    // tolower() is only defined for unsigned char values and EOF; feeding it a
+    // plain (possibly negative) char from a non-ASCII header name is UB.
+    std::transform(headerLabel.begin(), headerLabel.end(), headerLabel.begin(),
+                   [](unsigned char c) { return static_cast<char>(tolower(c)); });
 
     std::string headerContent = header.substr(labelendpos+1,header.size());
     headerContent = trimWhitespace(headerContent);
