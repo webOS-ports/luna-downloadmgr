@@ -360,24 +360,30 @@ bool DownloadManager::cbDownload(LSHandle* lshandle, LSMessage *msg, void *user_
 
 Done:
 
-    if (success) {
-        std::string payload = std::string("\"ticket\":") +key
-            +std::string(" , \"url\":\"") + task.url + std::string("\"")
-            +std::string(" , \"target\":\"") + task.destPath + task.destFile + std::string ("\"");
+    {
+        // Built with pbnjson rather than by string concatenation: task.url and
+        // the target path come from the caller's "target"/"targetDir"/
+        // "targetFilename", and errorText is a schema message, so a quote or
+        // backslash anywhere in them used to emit a malformed reply that no
+        // client could parse.
+        pbnjson::JValue replyJsonObj = pbnjson::Object();
+        if (success) {
+            replyJsonObj.put("returnValue", true);
+            replyJsonObj.put("ticket", (int64_t)ticket_id);
+            replyJsonObj.put("url", task.url);
+            replyJsonObj.put("target", task.destPath + task.destFile);
+        }
+        else {
+            replyJsonObj.put("returnValue", false);
+            replyJsonObj.put("errorCode", errorCode);
+            replyJsonObj.put("errorText", errorText);
+        }
+        replyJsonObj.put("subscribed", subscribed);
 
-        result  = std::string("{\"returnValue\":true , ") +payload;
+        result = JUtil::toSimpleString(replyJsonObj);
     }
-    else
-        result  = std::string("{\"returnValue\":false , \"errorCode\":\"")+errorCode+std::string("\",\"errorText\":\"")+errorText+std::string("\"");
 
-    if (subscribed) {
-        result += std::string(", \"subscribed\":true }");
-    } else {
-        result += std::string(", \"subscribed\":false }");
-    }
-
-    const char* r = result.c_str();
-    if (!LSMessageReply( lshandle, msg, r, &lserror ))  {
+    if (!LSMessageReply( lshandle, msg, result.c_str(), &lserror ))  {
         LSErrorPrint (&lserror, stderr);
         LSErrorFree(&lserror);
     }
@@ -738,17 +744,21 @@ bool DownloadManager::cbListPendingDownloads(LSHandle * lshandle,LSMessage *msg,
 
     int n = DownloadManager::instance().getJSONListOfAllDownloads(list);
 
-    result  = "{ \"returnValue\":true , \"count\":"+ConvertToString<int>(n);
-    if (n) {
-        result += std::string(", \"downloads\": [ ");
-        result += list.at(0);
-        for (size_t i=1;i<list.size();i++) {
-            result += std::string(", ")+list.at(i);
+    pbnjson::JValue replyJsonObj = pbnjson::Object();
+    replyJsonObj.put("returnValue", true);
+    replyJsonObj.put("count", n);
+    if (!list.empty()) {
+        pbnjson::JValue downloads = pbnjson::Array();
+        for (size_t i=0;i<list.size();i++) {
+            // each element is already a serialized task record; re-parse so the
+            // array is assembled as JSON instead of spliced together as text
+            pbnjson::JValue entry = JUtil::parse(list.at(i).c_str(), std::string(""));
+            if (!entry.isNull())
+                downloads.append(entry);
         }
-        result += std::string(" ] ");
+        replyJsonObj.put("downloads", downloads);
     }
-
-    result += std::string("}");
+    result = JUtil::toSimpleString(replyJsonObj);
 
     const char* r = result.c_str();
     if (!LSMessageReply( lshandle, msg, r, &lserror ))  {
@@ -908,7 +918,6 @@ bool DownloadManager::cbDeleteDownloadedFile(LSHandle* lshandle, LSMessage *msg,
     std::string historyInterface;
     std::string errorText;
     std::string targetStr;
-    std::string key = "0";
 
     DownloadTask task;
     unsigned long ticket_id=0;
@@ -931,7 +940,6 @@ bool DownloadManager::cbDeleteDownloadedFile(LSHandle* lshandle, LSMessage *msg,
     }
 
     ticket_id = root["ticket"].asNumber<int64_t>();
-    key = ConvertToString<long>(ticket_id);
 
     //retrieve the info of this ticket from download manager's task map
 
@@ -960,7 +968,6 @@ bool DownloadManager::cbDeleteDownloadedFile(LSHandle* lshandle, LSMessage *msg,
             success=true;
             targetStr = resultRoot["target"].asString();
             Utils::remove_file(targetStr);      //if the file is not found, no big deal; consider it deleted!
-            result = result = std::string("{\"ticket\":")+key+std::string(" , \"returnValue\":true }");
     }
     else {
         success =false;
@@ -969,9 +976,13 @@ bool DownloadManager::cbDeleteDownloadedFile(LSHandle* lshandle, LSMessage *msg,
 
     Done:
 
-    if (!success) {
-        result = std::string("{\"ticket\":")
-        +key+std::string(" , \"returnValue\":false , \"errorText\":\"")+errorText+std::string("\" }");
+    {
+        pbnjson::JValue replyJsonObj = pbnjson::Object();
+        replyJsonObj.put("ticket", (int64_t)ticket_id);
+        replyJsonObj.put("returnValue", success);
+        if (!success)
+            replyJsonObj.put("errorText", errorText);
+        result = JUtil::toSimpleString(replyJsonObj);
     }
     const char* r = result.c_str();
     if (!LSMessageReply( lshandle, msg, r, &lserror )) {
