@@ -1212,18 +1212,21 @@ int DownloadManager::pauseDownload(const unsigned long ticket,bool allowQueuedTo
     std::string historyString = JUtil::toSimpleString(payloadJsonObj);
     //add to database record
     m_pDlDb->addHistory(task->ticket,task->ownerId,task->connectionName,"interrupted",historyString);
-    if (!removeTask_dl(task->ticket)) {
-        LOG_DEBUG ("Function removeTask_dl() failed");
-    }
+
+    // removeTask_dl() above already took this ticket out of both maps, so
+    // calling it again here only logged a spurious failure. Everything still
+    // needed from the task has to be copied out before _task is destroyed:
+    // deleting the TransferTask also deletes the DownloadTask it owns.
     delete _task;
+    task = NULL;
 
     // if an active task has been paused, the next download should start
     if (!m_queue.empty() && (m_activeTaskCount < DownloadSettings::instance().maxDownloadManagerConcurrent) && allowQueuedToStart) {
         unsigned long queuedTicket = m_queue.front();
         m_queue.pop_front();
-        std::map<long,DownloadTask*>::iterator iter = m_ticketMap.find(queuedTicket);
-        if (iter != m_ticketMap.end()) {
-            DownloadTask* nextDownload = iter->second;
+        std::map<long,DownloadTask*>::iterator queuedIter = m_ticketMap.find(queuedTicket);
+        if (queuedIter != m_ticketMap.end() && queuedIter->second != NULL) {
+            DownloadTask* nextDownload = queuedIter->second;
             nextDownload->queued = false;
             m_activeTaskCount++;
             requestWakeLock(true);
@@ -1232,7 +1235,7 @@ int DownloadManager::pauseDownload(const unsigned long ticket,bool allowQueuedTo
             }
             //LOG_DEBUG ("%s: starting download of ticket [%lu] for url [%s] deviceId %s authToken %s\n", __PRETTY_FUNCTION__,
                 //nextDownload->ticket, nextDownload->url.c_str(), nextDownload->authToken.c_str(), nextDownload->deviceId.c_str());
-            m_pDlDb->addHistory(nextDownload->ticket,nextDownload->ownerId,task->connectionName,"running",nextDownload->toJSONString());
+            m_pDlDb->addHistory(nextDownload->ticket,nextDownload->ownerId,nextDownload->connectionName,"running",nextDownload->toJSONString());
         }
     }
     return DOWNLOADMANAGER_PAUSESTATUS_OK;
@@ -2006,7 +2009,7 @@ void DownloadManager::completed_dl(DownloadTask* task)
             }
             //LOG_DEBUG ("%s: un-Q-ing a task, starting download of ticket [%lu] for url [%s]\n", __PRETTY_FUNCTION__,
             //      nextDownload->ticket, nextDownload->url.c_str());
-            m_pDlDb->addHistory(nextDownload->ticket,nextDownload->ownerId,task->connectionName,"running",nextDownload->toJSONString());
+            m_pDlDb->addHistory(nextDownload->ticket,nextDownload->ownerId,nextDownload->connectionName,"running",nextDownload->toJSONString());
         }
     }
     else if (m_queue.empty() && m_activeTaskCount == 0) {
