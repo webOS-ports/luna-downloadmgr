@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2018 LG Electronics, Inc.
+// Copyright (c) 2012-2025 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,6 +34,11 @@ UploadTask * UploadTask::newFileUploadTask(const std::string& targeturl,const st
 {
     // set up the curl handle
     CURL * p_curl = curl_easy_init();
+    
+    if(p_curl==NULL){
+         LOG_DEBUG ("p_curl is an nullptr");
+         return NULL;
+    }
 
     if (curl_easy_setopt(p_curl, CURLOPT_URL,targeturl.c_str()) != CURLE_OK ) {
         curl_easy_cleanup(p_curl);
@@ -124,6 +129,11 @@ UploadTask * UploadTask::newBufferUploadTask(const std::string& targeturl,const 
 
     // set up the curl handle
     CURL * p_curl = curl_easy_init();
+    
+    if(p_curl==NULL){
+        LOG_DEBUG("p_curl is an nullptr");
+        return NULL;
+    }
 
     if (curl_easy_setopt(p_curl, CURLOPT_URL,targeturl.c_str()) != CURLE_OK ) {
         curl_easy_cleanup(p_curl);
@@ -173,7 +183,7 @@ UploadTask::UploadTask()
 {
 }
 
-UploadTask::UploadTask(const std::string& url,const std::string file,const std::string& data,uint32_t id,
+UploadTask::UploadTask(const std::string& url,const std::string& file,const std::string& data,uint32_t id,
         std::vector<PostItem> * postparts,const std::string& contenttype,CURL * p_curl)
 :   m_url(url) ,
     m_sourceFile(file) ,

@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2018 LG Electronics, Inc.
+// Copyright (c) 2012-2025 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -241,6 +241,11 @@ bool DownloadManager::cbDownload(LSHandle* lshandle, LSMessage *msg, void *user_
 
     DownloadTask task;
     JUtil::Error error;
+
+    if (msg == NULL || LSMessageGetPayload(msg) == NULL) {
+
+        return false;
+    }
 
     pbnjson::JValue root = JUtil::parse(LSMessageGetPayload(msg), "DownloadService.download", &error);
     if (root.isNull()) {
@@ -616,6 +621,11 @@ bool DownloadManager::cbCancelDownload(LSHandle* lshandle, LSMessage *msg, void 
     bool success = false;
     JUtil::Error error;
 
+    if (msg == NULL || LSMessageGetPayload(msg) == NULL) {
+
+       return false;
+    }
+
     pbnjson::JValue root = JUtil::parse(LSMessageGetPayload(msg), "DownloadService.cancelDownload", &error);
     if (root.isNull()) {
         success = false;
@@ -785,6 +795,11 @@ bool DownloadManager::cbGetAllHistory(LSHandle * lshandle,LSMessage *msg, void *
     bool retVal=false;
     JUtil::Error error;
 
+    if (msg == NULL || LSMessageGetPayload(msg) == NULL) {
+
+       return false;
+    }
+
     pbnjson::JValue root = JUtil::parse(LSMessageGetPayload(msg), "DownloadService.getAllHistory", &error);
     if (root.isNull()) {
         errorText = error.detail();
@@ -901,6 +916,11 @@ bool DownloadManager::cbDeleteDownloadedFile(LSHandle* lshandle, LSMessage *msg,
     JUtil::Error error;
     bool success = false;
 
+    if (msg == NULL || LSMessageGetPayload(msg) == NULL) {
+
+       return false;
+    }
+
     pbnjson::JValue root = JUtil::parse(LSMessageGetPayload(msg), "DownloadService.deleteDownloadedFile", &error);
     pbnjson::JValue resultRoot;
     if (root.isNull()) {
@@ -992,6 +1012,11 @@ bool DownloadManager::cbClearDownloadHistory(LSHandle * lshandle,LSMessage *msg,
     std::string errorText;
     int errorCode = 0;
     JUtil::Error error;
+
+    if (msg == NULL || LSMessageGetPayload(msg) == NULL) {
+
+       return false;
+    }
 
     pbnjson::JValue root = JUtil::parse(LSMessageGetPayload(msg), "DownloadService.clearHistory", &error);
     if (root.isNull()) {
@@ -1142,6 +1167,11 @@ bool DownloadManager::cbDownloadStatusQuery(LSHandle* lshandle, LSMessage *msg, 
     bool fromHistory = false;
     bool retVal = false;
     JUtil::Error error;
+
+    if (msg == NULL || LSMessageGetPayload(msg) == NULL) {
+
+       return false;
+    }
 
     pbnjson::JValue root = JUtil::parse(LSMessageGetPayload(msg), "DownloadService.downloadStatusQuery", &error);
     if (root.isNull()) {
@@ -1352,6 +1382,12 @@ bool DownloadManager::cbUpload (LSHandle* lshandle, LSMessage* msg, void* user_d
     boost::regex regMIME("^([^[:space:]]+)\\/([^[:space:]]+)$");
 
     JUtil::Error error;
+
+    if (msg == NULL || LSMessageGetPayload(msg) == NULL) {
+
+       return false;
+    }
+
     pbnjson::JValue root = JUtil::parse(LSMessageGetPayload(msg), "DownloadService.upload", &error);
     if (root.isNull()) {
         errorCode = DOWNLOADMANAGER_UPLOADSTATUS_GENERALERROR;
@@ -1433,7 +1469,7 @@ bool DownloadManager::cbUpload (LSHandle* lshandle, LSMessage* msg, void* user_d
             if (jo.isNull())
                 continue;
             std::string s = JUtil::toSimpleString(jo);
-            httpHeaders.push_back(s);
+            httpHeaders.push_back(std::move(s));
         }
     }
 
@@ -1980,6 +2016,11 @@ static bool cbAllow1x(LSHandle* lshandle, LSMessage *message,void *user_data)
 
     std::string errorText;
     JUtil::Error error;
+
+    if (message == NULL || LSMessageGetPayload(message) == NULL) {
+
+       return false;
+    }
 
     pbnjson::JValue root = JUtil::parse(LSMessageGetPayload(message), "DownloadService.allow1x", &error);
     if (root.isNull()) {
