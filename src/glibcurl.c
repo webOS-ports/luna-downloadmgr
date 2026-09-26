@@ -41,6 +41,18 @@
 
 #define DD(_args)
 
+/* g_source_set_callback() takes a GSourceFunc, which returns gboolean, while
+   GlibcurlCallback returns void. Casting between the two and calling through
+   the cast pointer (as dispatch() does) is undefined behaviour, and gcc warns
+   about it with -Wcast-function-type. Keep the user callback here and hand
+   glib a real GSourceFunc that forwards to it. */
+static GlibcurlCallback glibcurlCallback = 0;
+
+static gboolean glibcurlCallbackTrampoline(gpointer data) {
+  if (glibcurlCallback != 0) (*glibcurlCallback)(data);
+  return TRUE; /* our own dispatch() ignores this, but TRUE means "keep me" */
+}
+
 
 /* #if 1 */
 #ifdef G_OS_WIN32
@@ -184,7 +196,8 @@ void glibcurl_start() {
 /*______________________________________________________________________*/
 
 void glibcurl_set_callback(GlibcurlCallback function, void* data) {
-  g_source_set_callback(&curlSrc->source, (GSourceFunc)function, data,
+  glibcurlCallback = function;
+  g_source_set_callback(&curlSrc->source, glibcurlCallbackTrampoline, data,
                         NULL);
 }
 /*______________________________________________________________________*/
@@ -440,7 +453,8 @@ void glibcurl_start() {
 /*______________________________________________________________________*/
 
 void glibcurl_set_callback(GlibcurlCallback function, void* data) {
-  g_source_set_callback(&curlSrc->source, (GSourceFunc)function, data,
+  glibcurlCallback = function;
+  g_source_set_callback(&curlSrc->source, glibcurlCallbackTrampoline, data,
                         NULL);
 }
 /*______________________________________________________________________*/
@@ -472,6 +486,13 @@ static void registerUnregisterFds() {
                    &curlSrc->fdWrite, &curlSrc->fdExc, &curlSrc->fdMax);
   if ((curlSrc->fdMax < -1) || (curlSrc->fdMax > GLIBCURL_FDMAX)) {
       LOG_WARNING_PAIRS_ONLY (LOGID_GCURL_FDMAX_WARNING, 1, PMLOGKFV ("fdMax", "%d", curlSrc->fdMax));
+      /* lastPollFd[] only has GLIBCURL_FDMAX + 1 entries and the fd_sets only
+         hold FD_SETSIZE bits, so anything above the limit must be clamped
+         away rather than indexed: the assert below is compiled out in release
+         builds, and the loops here and in check() would run off the end of
+         lastPollFd[]. Clamping loses events on the highest descriptors, which
+         is a stall; indexing out of bounds corrupts the source object. */
+      curlSrc->fdMax = (curlSrc->fdMax < -1) ? -1 : GLIBCURL_FDMAX;
   }
   /*fprintf(stderr, "registerUnregisterFds: fdMax=%d\n", curlSrc->fdMax);*/
   assert(curlSrc->fdMax >= -1 && curlSrc->fdMax <= GLIBCURL_FDMAX);
