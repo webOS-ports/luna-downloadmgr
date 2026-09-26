@@ -60,7 +60,9 @@ static bool localSpaceOnFs(const std::string& path,uint64_t& spaceFreeKB,uint64_
 
     if (useFake)
     {
-        fs_stats.f_bfree = fakeFreeSize / fs_stats.f_frsize;
+        fs_stats.f_bfree = (fs_stats.f_frsize != 0)
+                               ? (fakeFreeSize / fs_stats.f_frsize)
+                               : 0;   //f_frsize can be 0 on pseudo filesystems
         LOG_DEBUG ("%s: USING FAKE STATFS VALUES! (free bytes specified as: %lu, free blocks simulated to: %lu )",
                 __FUNCTION__,fakeFreeSize,fs_stats.f_bfree);
     }

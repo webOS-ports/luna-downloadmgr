@@ -1066,8 +1066,21 @@ Done:
 
 void DownloadManager::filesystemStatusCheck(const uint64_t& freeSpaceKB,const uint64_t& totalSpaceKB, uint32_t *pctFullValue, bool * stopMarkReached)
 {
-    uint32_t pctFull = 100 - (uint32_t)(0.5 + ((double)freeSpaceKB / (double)totalSpaceKB) * (double)100.0);
-    pctFull = (pctFull <= 100 ? pctFull : 100);
+    uint32_t pctFull;
+    if (totalSpaceKB == 0)
+    {
+        // A zero-sized filesystem is not hypothetical: statvfs() reports
+        // f_blocks == 0 for procfs, sysfs, cgroupfs and friends, and
+        // filesysStatusCheck takes the path to stat from its caller. The
+        // division then yields NaN and converting NaN to uint32_t is undefined,
+        // so decide it here: nothing free out of nothing is "full".
+        pctFull = 100;
+    }
+    else
+    {
+        pctFull = 100 - (uint32_t)(0.5 + ((double)freeSpaceKB / (double)totalSpaceKB) * (double)100.0);
+        pctFull = (pctFull <= 100 ? pctFull : 100);
+    }
     LOG_DEBUG ("%s: Percent Full = %u (from free space KB = %lu , total space KB = %lu",__FUNCTION__,pctFull,freeSpaceKB,totalSpaceKB);
 
     if (pctFullValue)

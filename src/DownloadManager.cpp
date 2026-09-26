@@ -2326,7 +2326,9 @@ bool DownloadManager::spaceCheckOnFs(const std::string& path,uint64_t thresholdK
 
     if (DownloadSettings::instance().dbg_useStatfsFake)
     {
-        fs_stats.f_bfree = DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes / fs_stats.f_frsize;
+        fs_stats.f_bfree = (fs_stats.f_frsize != 0)
+                               ? (DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes / fs_stats.f_frsize)
+                               : 0;   //f_frsize can be 0 on pseudo filesystems
         LOG_DEBUG ("%s: USING FAKE STATFS VALUES! (free bytes specified as: %lu, free blocks simulated to: %lu )",
                         __FUNCTION__,DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes,fs_stats.f_bfree);
     }
@@ -2353,7 +2355,9 @@ bool DownloadManager::spaceOnFs(const std::string& path,uint64_t& spaceFreeKB,ui
 
     if (DownloadSettings::instance().dbg_useStatfsFake)
     {
-        fs_stats.f_bfree = DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes / fs_stats.f_frsize;
+        fs_stats.f_bfree = (fs_stats.f_frsize != 0)
+                               ? (DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes / fs_stats.f_frsize)
+                               : 0;   //f_frsize can be 0 on pseudo filesystems
         LOG_DEBUG ("%s: USING FAKE STATFS VALUES! (free bytes specified as: %lu, free blocks simulated to: %lu )",
                 __FUNCTION__,DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes,fs_stats.f_bfree);
     }
