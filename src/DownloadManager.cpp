@@ -1317,8 +1317,18 @@ int DownloadManager::swapToInterface(const unsigned long int ticket,const Connec
         break;
     case Btpan:
         ifaceName = m_btpanInterfaceName;
+        break;
     case ANY:
-        return SWAPTOIF_ERROR_INVALIDIF;        //to make switch happy
+    default:
+        // rejected at the top of the function, so this is unreachable; if it
+        // ever is reached the handle has already been pulled out of glibcurl
+        // above, so put it back rather than stranding the transfer.
+        if (pDltask->queued == false) {
+            if (glibcurl_add(pDltask->curlDesc.getHandle()) != 0) {
+                LOG_DEBUG ("Function glibcurl_add() failed");
+            }
+        }
+        return SWAPTOIF_ERROR_INVALIDIF;
     }
 
     pDltask->connectionName = DownloadManager::connectionId2Name(newInterface);
@@ -2231,8 +2241,12 @@ int DownloadManager::getJSONListOfAllDownloads(std::vector<std::string>& downloa
     while (iter != m_ticketMap.end()) {
 
         DownloadTask * task = iter->second;
-        if (task == NULL)
-            continue;       //this shouldn't happen!
+        if (task == NULL) {
+            //this shouldn't happen! - but skipping without advancing the
+            //iterator used to spin this loop forever, hanging the service
+            iter++;
+            continue;
+        }
 
                 //TODO: maybe a harsher response for debugging purposes; error of this type can't really be handled here
                 //- but if it happens, root cause should be found and fixed
