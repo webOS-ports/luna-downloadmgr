@@ -14,7 +14,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-cmake_minimum_required(VERSION 2.8.7)
+cmake_minimum_required(VERSION 3.5...3.31)
 project(LunaDownloadMgr CXX)
 
 include(webOS/webOS)
@@ -64,11 +64,19 @@ include_directories(src)
 
 webos_add_compiler_flags(ALL -Wall -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64)
 
+# Exploit mitigations, extra warnings and optional sanitizers.
+# See cmake/Hardening.cmake for the individual options.
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+include(Hardening)
+ldm_apply_hardening()
+
 webos_include_install_paths()
 
 include_directories(${WEBOS_BINARY_CONFIGURED_DIR})
 
-set(SOURCES
+# Everything except main(), so the unit tests and fuzz harnesses under tests/
+# can link the same objects the daemon is built from.
+set(LIB_SOURCES
     src/DownloadHistoryDb.cpp
     src/DownloadManager.cpp
     src/DownloadService.cpp
@@ -76,7 +84,6 @@ set(SOURCES
     src/DownloadTask.cpp
     src/DownloadUtils.cpp
     src/Logging.cpp
-    src/Main.cpp
     src/UploadTask.cpp
     src/UrlRep.cpp
     src/JUtil.cpp
@@ -85,23 +92,32 @@ set(SOURCES
     src/Singleton.cpp
     src/glibcurl.c)
 
+set(SOURCES ${LIB_SOURCES} src/Main.cpp)
+
 # force cmake to build glibcurl.c also (as c++ source)
 set_source_files_properties(${SOURCES} PROPERTIES LANGUAGE CXX)
 
-add_executable(${CMAKE_PROJECT_NAME} ${SOURCES})
+set(LDM_LIBRARIES
+    ${GLIB2_LDFLAGS}
+    ${GTHREAD2_LDFLAGS}
+    ${LUNA_PREFS_LDFLAGS}
+    ${LS2_LDFLAGS}
+    ${PMLOGLIB_LDFLAGS}
+    ${CURL_LDFLAGS}
+    ${PBNJSON_CPP_LDFLAGS}
+    ${SQLITE3_LDFLAGS}
+    ${Boost_LIBRARIES}
+    pthread
+    uriparser)
+
+add_library(LunaDownloadMgrCore STATIC ${LIB_SOURCES})
+target_link_libraries(LunaDownloadMgrCore ${LDM_LIBRARIES})
+
+add_executable(${CMAKE_PROJECT_NAME} src/Main.cpp)
 
 target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${GLIB2_LDFLAGS}
-                      ${GTHREAD2_LDFLAGS}
-                      ${LUNA_PREFS_LDFLAGS}
-                      ${LS2_LDFLAGS}
-                      ${PMLOGLIB_LDFLAGS}
-                      ${CURL_LDFLAGS}
-                      ${PBNJSON_CPP_LDFLAGS}
-                      ${SQLITE3_LDFLAGS}
-                      ${Boost_LIBRARIES}
-                      pthread
-                      uriparser)
+                      LunaDownloadMgrCore
+                      ${LDM_LIBRARIES})
 
 # TODO: LunaDownloadMgr is daemon so fix to use webos_build_daemon
 # macro, when handled following (backward compatibility) issues:
@@ -156,3 +172,13 @@ if (EXISTS ${CMAKE_SOURCE_DIR}/files/conf/downloadManager-${MACHINE}.conf.in)
 endif()
 
 webos_config_build_doxygen(files/doc Doxyfile)
+
+# Unit tests, fuzz harnesses and stress drivers. Off by default so the normal
+# component build is unchanged; see tests/README.md.
+option(ENABLE_TESTS   "Build the gtest unit tests (needs gtest in the sysroot)" OFF)
+option(ENABLE_FUZZERS "Build the libFuzzer harnesses (needs clang)" OFF)
+
+if(ENABLE_TESTS OR ENABLE_FUZZERS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

@@ -18,6 +18,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <inttypes.h>
+#include <cctype>
 #include <cstring>
 #include <glib.h>
 #include <sys/types.h>
@@ -60,14 +62,16 @@ static bool localSpaceOnFs(const std::string& path,uint64_t& spaceFreeKB,uint64_
 
     if (useFake)
     {
-        fs_stats.f_bfree = fakeFreeSize / fs_stats.f_frsize;
-        LOG_DEBUG ("%s: USING FAKE STATFS VALUES! (free bytes specified as: %lu, free blocks simulated to: %lu )",
-                __FUNCTION__,fakeFreeSize,fs_stats.f_bfree);
+        fs_stats.f_bfree = (fs_stats.f_frsize != 0)
+                               ? (fakeFreeSize / fs_stats.f_frsize)
+                               : 0;   //f_frsize can be 0 on pseudo filesystems
+        LOG_DEBUG ("%s: USING FAKE STATFS VALUES! (free bytes specified as: %" PRIu64 ", free blocks simulated to: %" PRIu64 " )",
+                __FUNCTION__,fakeFreeSize,(uint64_t)fs_stats.f_bfree);
     }
 
     spaceFreeKB = ( ((uint64_t)(fs_stats.f_bfree) * (uint64_t)(fs_stats.f_frsize)) >> 10);
     spaceTotalKB = ( ((uint64_t)(fs_stats.f_blocks) * (uint64_t)(fs_stats.f_frsize)) >> 10);
-    LOG_DEBUG ("%s: [%s] KB free = %lu, KB total = %lu",__FUNCTION__,path.c_str(),spaceFreeKB,spaceTotalKB);
+    LOG_DEBUG ("%s: [%s] KB free = %" PRIu64 ", KB total = %" PRIu64,__FUNCTION__,path.c_str(),spaceFreeKB,spaceTotalKB);
     return true;
 }
 
@@ -257,17 +261,17 @@ void DownloadSettings::load( )
     {
         //make sure the stop mark is sane...it should be: totalSpaceFs - freespaceStopmarkRemainingKBytes > totalSpaceFs * freespaceCriticalmarkFullPercent/100
         uint64_t remainKBat99Pct = (uint64_t)((double)totalSpaceFs * ((double)freespaceCriticalmarkFullPercent/100.0)); //oh good lord, let me count the ways that this leaves room for overflow =(
-        LOG_DEBUG ("Info: space remaining at 99%% for the current filesys is %lu KB",remainKBat99Pct);
+        LOG_DEBUG ("Info: space remaining at 99%% for the current filesys is %" PRIu64 " KB",remainKBat99Pct);
 
         if (remainKBat99Pct < freespaceStopmarkRemainingKBytes)
         {
             freespaceStopmarkRemainingKBytes = remainKBat99Pct;
-            LOG_DEBUG ("(the SpaceRemainStopmarkKB specification was incorrectly set; resetting to the 99%% mark, which is %lu KB)",freespaceStopmarkRemainingKBytes);
+            LOG_DEBUG ("(the SpaceRemainStopmarkKB specification was incorrectly set; resetting to the 99%% mark, which is %" PRIu64 " KB)",freespaceStopmarkRemainingKBytes);
         }
     }
 
 
-    LOG_DEBUG ("Info: Using the following filesystem alert limits: Low = %u%% , Med = %u%% , High = %u%% , Critical = %u%% , stop mark @ %lu KB remaining",
+    LOG_DEBUG ("Info: Using the following filesystem alert limits: Low = %u%% , Med = %u%% , High = %u%% , Critical = %u%% , stop mark @ %" PRIu64 " KB remaining",
             freespaceLowmarkFullPercent,freespaceMedmarkFullPercent,freespaceHighmarkFullPercent,freespaceCriticalmarkFullPercent,freespaceStopmarkRemainingKBytes);
 
     KEY_BOOLEAN("Debug","Fake1x",dbg_fake1xForWan);
@@ -326,15 +330,27 @@ unsigned long MemStringToBytes( const char* ptr )
     unsigned long r = 0;
     const char* s= ptr;
 
-    while( *ptr && !isalnum(*ptr) ) // skip whitespace
+    if (!ptr)
+        return 0;
+
+    // isalnum()/isdigit() are only defined for unsigned char values and EOF
+    while( *ptr && !isalnum((unsigned char)*ptr) ) // skip whitespace
         ptr++;
     s=ptr;
 
-    while( isdigit(*ptr) )
+    while( isdigit((unsigned char)*ptr) )
         ptr++;
 
-    strncpy( number, s, (size_t)(ptr-s) );
-    number[ptr-s]=0;
+    // A run of 32 or more digits overflowed number[]: strncpy() wrote past the
+    // end of the buffer and number[ptr-s]=0 then stored the terminator further
+    // out still. Such a value cannot fit in an unsigned long anyway, so
+    // truncate the copy to what the buffer holds.
+    size_t digits = (size_t)(ptr - s);
+    if (digits > sizeof(number) - 1)
+        digits = sizeof(number) - 1;
+
+    memcpy( number, s, digits );
+    number[digits]=0;
 
     r = (unsigned long)atol(number);
     switch(*ptr)

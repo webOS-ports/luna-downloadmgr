@@ -74,10 +74,13 @@ public:
     static std::string        toSimpleString(pbnjson::JValue json);
 
     /*! Load schema from file.
-     * If schemaName is empty, return JSchemaFragment("{}")
+     * If schemaName is empty, return JSchema::AllSchema()
      * If cache set, find cache first and if not exist in cache load schema and store it.
+     * External $ref links are resolved here, once, before the schema is cached -
+     * pbnjson 3.0 drops resolving at parse time.
      */
-    pbnjson::JSchema          loadSchema(const std::string &schemaName, bool cache);
+    pbnjson::JSchema          loadSchema(const std::string &schemaName, bool cache,
+                                         pbnjson::JResolver *resolver = NULL);
 
 protected:
     friend class Singleton<JUtil>;

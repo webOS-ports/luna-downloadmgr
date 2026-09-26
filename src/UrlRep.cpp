@@ -32,15 +32,22 @@ UrlRep UrlRep::fromUrl(const char* uri)
 
     UriParserStateA state;
     UriUriA uriA;
-    UriQueryListA* queryList;
-    int queryCount;
+    UriQueryListA* queryList = NULL;
+    int queryCount = 0;
 
     state.uri = &uriA;
 
     urlRep.query.clear();
 
-    if (uriParseUriA(&state, uri) != URI_SUCCESS)
+    if (uriParseUriA(&state, uri) != URI_SUCCESS) {
+        // uriparser's own documentation for this (legacy) entry point puts the
+        // cleanup on the caller, so release the members here rather than relying
+        // on the implementation. Measured against uriparser 1.0.2: the parser
+        // does clean up after itself on failure, and uriFreeUriMembersA() is
+        // idempotent, so this is belt-and-braces rather than a leak fix.
+        uriFreeUriMembersA(&uriA);
         return urlRep;
+    }
 
     urlRep.scheme = URI_TEXT_RANGE_TO_STRING(uriA.scheme);
     urlRep.userInfo = URI_TEXT_RANGE_TO_STRING(uriA.userInfo);
@@ -62,20 +69,28 @@ UrlRep UrlRep::fromUrl(const char* uri)
         urlRep.resource = URI_TEXT_RANGE_TO_STRING((uriA.pathTail)->text);
 
     if (uriA.query.first) {
-        (void) uriDissectQueryMallocA(&queryList, &queryCount,
-                               uriA.query.first,
-                               uriA.query.afterLast);
-
-        UriQueryListA* tmpQueryList = queryList;
-        while (tmpQueryList) {
-            if (tmpQueryList->key) {
-                urlRep.query[tmpQueryList->key] = tmpQueryList->value ?
-                                                  tmpQueryList->value : std::string();
+        // uriDissectQueryMallocA() leaves *queryList untouched when it fails
+        // (verified against uriparser 1.0.2: URI_ERROR_RANGE_INVALID and
+        // URI_ERROR_NULL both return without writing it), so the previous code -
+        // uninitialized local, return value cast to void - would have walked
+        // whatever was on the stack. uriparser's post-parse invariants make that
+        // unreachable from here today, since query.first/afterLast always
+        // describe a valid range; initializing and checking costs nothing and
+        // removes the dependency on that.
+        if (uriDissectQueryMallocA(&queryList, &queryCount,
+                                   uriA.query.first,
+                                   uriA.query.afterLast) == URI_SUCCESS) {
+            UriQueryListA* tmpQueryList = queryList;
+            while (tmpQueryList) {
+                if (tmpQueryList->key) {
+                    urlRep.query[tmpQueryList->key] = tmpQueryList->value ?
+                                                      tmpQueryList->value : std::string();
+                }
+                tmpQueryList = tmpQueryList->next;
             }
-            tmpQueryList = tmpQueryList->next;
-        }
 
-        uriFreeQueryListA(queryList);
+            uriFreeQueryListA(queryList);
+        }
     }
 
     uriFreeUriMembersA(&uriA);

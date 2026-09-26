@@ -103,8 +103,13 @@ private:
     //propagate into the object and store, postparts and contenttype, as they may be useful in case of redirects, or other transient problems
     UploadTask(const std::string& url,const std::string& file,const std::string& data,uint32_t id,
             std::vector<PostItem> * postparts,const std::string& contenttype,CURL * p_curl);
-    UploadTask& operator=(const UploadTask& c) { return *this;}
-    UploadTask(const UploadTask& c);
+    // Both were private and, in the copy constructor's case, only copied the
+    // raw curl pointers - so a copy would have double-freed the easy handle,
+    // the header lists and the form list while silently dropping every
+    // std::string member. Deleting them states the intent and lets the
+    // definition in UploadTask.cpp go away.
+    UploadTask& operator=(const UploadTask& c) = delete;
+    UploadTask(const UploadTask& c) = delete;
 
     static uint32_t genNewId();
 
@@ -122,8 +127,10 @@ private:
 
     CURL *                              m_p_curlHandle;
     struct curl_slist *                 m_p_curlHeaderList;
-    struct curl_slist *                 m_p_curlFilePartHeaderList;
-    struct curl_httppost *              m_p_httpPostList;
+    // Multipart body, replacing the curl_httppost list that CURLOPT_HTTPPOST
+    // took. Bound to m_p_curlHandle, so it must be released before the easy
+    // handle is cleaned up - see the destructor.
+    curl_mime *                         m_p_mime;
     CURLcode                            m_curlResultCode;
     uint32_t                            m_httpResultCode;
 

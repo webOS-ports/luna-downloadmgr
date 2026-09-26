@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <sstream>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <glib/gstdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -53,22 +54,22 @@ static void turnNovacomOn(LSHandle * lshandle);
 ///////// --------------------------------------------------------------------------- LUNA BUS FUNCTIONS ----------------------------------------
 
 static LSMethod s_methods[]  = {
-    { "deleteDownloadedFile",       DownloadManager::cbDeleteDownloadedFile},
-    { "downloadStatusQuery",        DownloadManager::cbDownloadStatusQuery },
-    { "download",                   DownloadManager::cbDownload },
-    { "resumeDownload",             DownloadManager::cbResumeDownload },
-    { "pauseDownload",              DownloadManager::cbPauseDownload },
-    { "cancelDownload",             DownloadManager::cbCancelDownload },
-    { "cancelUpload",               DownloadManager::cbCancelDownload },                //just an alias and a bit of a misnomer: cancelDownload will cancel either an upload or download
-    { "cancelAllDownloads",         DownloadManager::cbCancelAllDownloads },
-    { "listPending",                DownloadManager::cbListPendingDownloads },
-    { "getAllHistory",              DownloadManager::cbGetAllHistory },
-    { "clearHistory",               DownloadManager::cbClearDownloadHistory },
-    { "upload",                     DownloadManager::cbUpload },
-    { "filesysStatusCheck",         DownloadManager::cbFsStatusCheck},
-    { "is1xMode",                   DownloadManager::cbConnectionType},
-    { "allow1x",                    cbAllow1x },
-    { 0, 0 },
+    { "deleteDownloadedFile",       DownloadManager::cbDeleteDownloadedFile, LUNA_METHOD_FLAGS_NONE },
+    { "downloadStatusQuery",        DownloadManager::cbDownloadStatusQuery,  LUNA_METHOD_FLAGS_NONE },
+    { "download",                   DownloadManager::cbDownload,             LUNA_METHOD_FLAGS_NONE },
+    { "resumeDownload",             DownloadManager::cbResumeDownload,       LUNA_METHOD_FLAGS_NONE },
+    { "pauseDownload",              DownloadManager::cbPauseDownload,        LUNA_METHOD_FLAGS_NONE },
+    { "cancelDownload",             DownloadManager::cbCancelDownload,       LUNA_METHOD_FLAGS_NONE },
+    { "cancelUpload",               DownloadManager::cbCancelDownload,       LUNA_METHOD_FLAGS_NONE },   //just an alias and a bit of a misnomer: cancelDownload will cancel either an upload or download
+    { "cancelAllDownloads",         DownloadManager::cbCancelAllDownloads,   LUNA_METHOD_FLAGS_NONE },
+    { "listPending",                DownloadManager::cbListPendingDownloads, LUNA_METHOD_FLAGS_NONE },
+    { "getAllHistory",              DownloadManager::cbGetAllHistory,        LUNA_METHOD_FLAGS_NONE },
+    { "clearHistory",               DownloadManager::cbClearDownloadHistory, LUNA_METHOD_FLAGS_NONE },
+    { "upload",                     DownloadManager::cbUpload,               LUNA_METHOD_FLAGS_NONE },
+    { "filesysStatusCheck",         DownloadManager::cbFsStatusCheck,        LUNA_METHOD_FLAGS_NONE },
+    { "is1xMode",                   DownloadManager::cbConnectionType,       LUNA_METHOD_FLAGS_NONE },
+    { "allow1x",                    cbAllow1x,                               LUNA_METHOD_FLAGS_NONE },
+    { 0, 0, LUNA_METHOD_FLAGS_NONE },
 };
 
 void DownloadManager::startService()
@@ -359,24 +360,30 @@ bool DownloadManager::cbDownload(LSHandle* lshandle, LSMessage *msg, void *user_
 
 Done:
 
-    if (success) {
-        std::string payload = std::string("\"ticket\":") +key
-            +std::string(" , \"url\":\"") + task.url + std::string("\"")
-            +std::string(" , \"target\":\"") + task.destPath + task.destFile + std::string ("\"");
+    {
+        // Built with pbnjson rather than by string concatenation: task.url and
+        // the target path come from the caller's "target"/"targetDir"/
+        // "targetFilename", and errorText is a schema message, so a quote or
+        // backslash anywhere in them used to emit a malformed reply that no
+        // client could parse.
+        pbnjson::JValue replyJsonObj = pbnjson::Object();
+        if (success) {
+            replyJsonObj.put("returnValue", true);
+            replyJsonObj.put("ticket", (int64_t)ticket_id);
+            replyJsonObj.put("url", task.url);
+            replyJsonObj.put("target", task.destPath + task.destFile);
+        }
+        else {
+            replyJsonObj.put("returnValue", false);
+            replyJsonObj.put("errorCode", errorCode);
+            replyJsonObj.put("errorText", errorText);
+        }
+        replyJsonObj.put("subscribed", subscribed);
 
-        result  = std::string("{\"returnValue\":true , ") +payload;
+        result = JUtil::toSimpleString(replyJsonObj);
     }
-    else
-        result  = std::string("{\"returnValue\":false , \"errorCode\":\"")+errorCode+std::string("\",\"errorText\":\"")+errorText+std::string("\"");
 
-    if (subscribed) {
-        result += std::string(", \"subscribed\":true }");
-    } else {
-        result += std::string(", \"subscribed\":false }");
-    }
-
-    const char* r = result.c_str();
-    if (!LSMessageReply( lshandle, msg, r, &lserror ))  {
+    if (!LSMessageReply( lshandle, msg, result.c_str(), &lserror ))  {
         LSErrorPrint (&lserror, stderr);
         LSErrorFree(&lserror);
     }
@@ -737,17 +744,21 @@ bool DownloadManager::cbListPendingDownloads(LSHandle * lshandle,LSMessage *msg,
 
     int n = DownloadManager::instance().getJSONListOfAllDownloads(list);
 
-    result  = "{ \"returnValue\":true , \"count\":"+ConvertToString<int>(n);
-    if (n) {
-        result += std::string(", \"downloads\": [ ");
-        result += list.at(0);
-        for (size_t i=1;i<list.size();i++) {
-            result += std::string(", ")+list.at(i);
+    pbnjson::JValue replyJsonObj = pbnjson::Object();
+    replyJsonObj.put("returnValue", true);
+    replyJsonObj.put("count", n);
+    if (!list.empty()) {
+        pbnjson::JValue downloads = pbnjson::Array();
+        for (size_t i=0;i<list.size();i++) {
+            // each element is already a serialized task record; re-parse so the
+            // array is assembled as JSON instead of spliced together as text
+            pbnjson::JValue entry = JUtil::parse(list.at(i).c_str(), std::string(""));
+            if (!entry.isNull())
+                downloads.append(entry);
         }
-        result += std::string(" ] ");
+        replyJsonObj.put("downloads", downloads);
     }
-
-    result += std::string("}");
+    result = JUtil::toSimpleString(replyJsonObj);
 
     const char* r = result.c_str();
     if (!LSMessageReply( lshandle, msg, r, &lserror ))  {
@@ -833,21 +844,18 @@ Done:
             pbnjson::JValue statusObj = JUtil::parse(it->m_downloadRecordJsonString.c_str(), std::string(""));
             if (!statusObj.isNull())
             {
-                for(pbnjson::JValue::ObjectIterator it = statusObj.begin(); it != statusObj.end(); ++it)
+                // children() rather than begin()/end(), which pbnjson deprecated
+                if (statusObj.hasKey("target"))
                 {
-                    std::string strKey = (*it).first.asString();
-                    if (strKey == std::string("target"))
+                    std::string strVal = statusObj["target"].asString();
+                    if (doesExistOnFilesystem(strVal.c_str()))
                     {
-                       std::string strVal = (*it).second.asString();
-                       if (doesExistOnFilesystem(strVal.c_str()))
-                        {
-                            item.put("fileExistsOnFilesys", true);
-                            item.put("fileSizeOnFilesys", filesizeOnFilesystem(strVal.c_str()));
-                        }
-                        else
-                        {
-                            item.put("fileExistsOnFilesys", false);
-                        }
+                        item.put("fileExistsOnFilesys", true);
+                        item.put("fileSizeOnFilesys", filesizeOnFilesystem(strVal.c_str()));
+                    }
+                    else
+                    {
+                        item.put("fileExistsOnFilesys", false);
                     }
                 }
             }
@@ -907,7 +915,6 @@ bool DownloadManager::cbDeleteDownloadedFile(LSHandle* lshandle, LSMessage *msg,
     std::string historyInterface;
     std::string errorText;
     std::string targetStr;
-    std::string key = "0";
 
     DownloadTask task;
     unsigned long ticket_id=0;
@@ -930,7 +937,6 @@ bool DownloadManager::cbDeleteDownloadedFile(LSHandle* lshandle, LSMessage *msg,
     }
 
     ticket_id = root["ticket"].asNumber<int64_t>();
-    key = ConvertToString<long>(ticket_id);
 
     //retrieve the info of this ticket from download manager's task map
 
@@ -959,7 +965,6 @@ bool DownloadManager::cbDeleteDownloadedFile(LSHandle* lshandle, LSMessage *msg,
             success=true;
             targetStr = resultRoot["target"].asString();
             Utils::remove_file(targetStr);      //if the file is not found, no big deal; consider it deleted!
-            result = result = std::string("{\"ticket\":")+key+std::string(" , \"returnValue\":true }");
     }
     else {
         success =false;
@@ -968,9 +973,13 @@ bool DownloadManager::cbDeleteDownloadedFile(LSHandle* lshandle, LSMessage *msg,
 
     Done:
 
-    if (!success) {
-        result = std::string("{\"ticket\":")
-        +key+std::string(" , \"returnValue\":false , \"errorText\":\"")+errorText+std::string("\" }");
+    {
+        pbnjson::JValue replyJsonObj = pbnjson::Object();
+        replyJsonObj.put("ticket", (int64_t)ticket_id);
+        replyJsonObj.put("returnValue", success);
+        if (!success)
+            replyJsonObj.put("errorText", errorText);
+        result = JUtil::toSimpleString(replyJsonObj);
     }
     const char* r = result.c_str();
     if (!LSMessageReply( lshandle, msg, r, &lserror )) {
@@ -1066,9 +1075,22 @@ Done:
 
 void DownloadManager::filesystemStatusCheck(const uint64_t& freeSpaceKB,const uint64_t& totalSpaceKB, uint32_t *pctFullValue, bool * stopMarkReached)
 {
-    uint32_t pctFull = 100 - (uint32_t)(0.5 + ((double)freeSpaceKB / (double)totalSpaceKB) * (double)100.0);
-    pctFull = (pctFull <= 100 ? pctFull : 100);
-    LOG_DEBUG ("%s: Percent Full = %u (from free space KB = %lu , total space KB = %lu",__FUNCTION__,pctFull,freeSpaceKB,totalSpaceKB);
+    uint32_t pctFull;
+    if (totalSpaceKB == 0)
+    {
+        // A zero-sized filesystem is not hypothetical: statvfs() reports
+        // f_blocks == 0 for procfs, sysfs, cgroupfs and friends, and
+        // filesysStatusCheck takes the path to stat from its caller. The
+        // division then yields NaN and converting NaN to uint32_t is undefined,
+        // so decide it here: nothing free out of nothing is "full".
+        pctFull = 100;
+    }
+    else
+    {
+        pctFull = 100 - (uint32_t)(0.5 + ((double)freeSpaceKB / (double)totalSpaceKB) * (double)100.0);
+        pctFull = (pctFull <= 100 ? pctFull : 100);
+    }
+    LOG_DEBUG ("%s: Percent Full = %u (from free space KB = %" PRIu64 " , total space KB = %" PRIu64 ")",__FUNCTION__,pctFull,freeSpaceKB,totalSpaceKB);
 
     if (pctFullValue)
         *pctFullValue = pctFull;
@@ -1235,9 +1257,9 @@ Done:
             responseRoot.put("errorText", std::string("db_error"));
         }
         else {
-            for(pbnjson::JValue::ObjectIterator it = resultObject.begin(); it != resultObject.end(); ++it )
+            for (const pbnjson::JValue::KeyValue &field : resultObject.children())
             {
-                responseRoot.put((*it).first.asString(), (*it).second);
+                responseRoot.put(field.first.asString(), field.second);
             }
             responseRoot.put("owner", historyCaller);
             responseRoot.put("interface", historyInterface);
@@ -1435,29 +1457,31 @@ bool DownloadManager::cbUpload (LSHandle* lshandle, LSMessage* msg, void* user_d
             if (jo.isNull())
                 continue;
 
-            std::string key,data,contentType;
+            // named distinctly from the request-level contentType it shadowed
+            std::string key,data,partContentType;
             key = jo["key"].asString();
             data = jo["data"].asString();
-            contentType = jo["contentType"].asString();
+            partContentType = jo["contentType"].asString();
 
             // check MIME parameter validity in "postParameters"
             if(jo.hasKey("contentType")) {
-                if (!boost::regex_match(contentType, regMIME)) {
+                if (!boost::regex_match(partContentType, regMIME)) {
                     errorCode = DOWNLOADMANAGER_UPLOADSTATUS_INVALIDPARAM;
                     errorText = "Invalid MIME type";
                     goto Done_cbUp;
                 }
             }
 
-            postHeaders.push_back(PostItem(key,data,PostItem::Value,contentType));
+            postHeaders.push_back(PostItem(key,data,PostItem::Value,partContentType));
         }
     }
 
     jo_cookies = root["cookies"];
     if (!jo_cookies.isNull()) {
-        for(pbnjson::JValue::ObjectIterator it = jo_cookies.begin(); it != jo_cookies.end(); ++it )
+        for (const pbnjson::JValue::KeyValue &cookie : jo_cookies.children())
         {
-            cookies.push_back(std::pair<std::string,std::string>((*it).first.asString(), (*it).second.asString()));
+            cookies.push_back(std::pair<std::string,std::string>(cookie.first.asString(),
+                                                                cookie.second.asString()));
         }
     }
 
@@ -1466,10 +1490,16 @@ bool DownloadManager::cbUpload (LSHandle* lshandle, LSMessage* msg, void* user_d
         pbnjson::JValue jo;
         for (int idx=0;idx<jo_httpheaders.arraySize();++idx) {
             jo = jo_httpheaders[idx];
-            if (jo.isNull())
+            // Take the string, don't re-serialise it. JUtil::toSimpleString()
+            // is JGenerator::serialize() with a schema, which renders a JSON
+            // document - so a header element came back with its JSON quotes
+            // still attached ("X-Foo: bar"), and curl then sent a header whose
+            // name was literally "X-Foo. The caller saw its headers accepted
+            // and silently not applied. pbnjson has a quoteSingleString=false
+            // overload for exactly this case; asString() is plainer still.
+            if (!jo.isString())
                 continue;
-            std::string s = JUtil::toSimpleString(jo);
-            httpHeaders.push_back(std::move(s));
+            httpHeaders.push_back(jo.asString());
         }
     }
 

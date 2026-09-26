@@ -35,6 +35,11 @@ public:
             delete p_uploadTask;
     }
 
+    // Owns whichever task pointer is set; the implicit copies would hand a
+    // second owner the same pointer and double-delete it.
+    TransferTask(const TransferTask&) = delete;
+    TransferTask& operator=(const TransferTask&) = delete;
+
     void setLocationHeader(const std::string& s)
     {
         if (p_downloadTask)

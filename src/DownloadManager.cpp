@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <sstream>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <glib/gstdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -458,7 +459,9 @@ int DownloadManager::download (const std::string& caller,
 
             if ((task->fp) && (range.second != 0) && (range.second > range.first))
             {
-                if (fseek(task->fp, range.first, SEEK_SET) != 0)
+                // fseeko()/off_t rather than fseek()/long: range.first is a
+                // uint64_t and long is 32 bits on armv7
+                if (fseeko(task->fp, (off_t)range.first, SEEK_SET) != 0)
                 {
                     if (fclose(task->fp) != 0) {
                         LOG_DEBUG ("Function fclose() failed");
@@ -599,7 +602,7 @@ int DownloadManager::download (const std::string& caller,
         if ((curlSetOptRc = curl_easy_setopt(curlHandle, CURLOPT_RESUME_FROM_LARGE, range.first)) != CURLE_OK )
             LOG_DEBUG ("curl set opt: CURLOPT_RESUME_FROM_LARGE failed [%d]\n",curlSetOptRc);
         else
-            LOG_DEBUG ("Using range: %lu - %lu\n",range.first,range.second);
+            LOG_DEBUG ("Using range: %" PRIu64 " - %" PRIu64 "\n",range.first,range.second);
     }
 
     if (!authToken.empty() && !deviceId.empty()) {
@@ -742,20 +745,29 @@ int DownloadManager::resumeDownload(const DownloadHistoryDb::DownloadHistory& hi
     }
 
     uint64_t initialOffset = 0;
-    if (!root.hasKey("e_initialOffset"))
+    // DownloadTask::toJSON() writes the 64-bit value under
+    // "e_initialOffsetBytes" (and documents that name in the downloadStatusQuery
+    // subscription payload), but this only ever looked for "e_initialOffset".
+    // The lookup therefore always missed and fell back to the 32-bit
+    // "initialOffset" field, truncating the offset for anything past 4GB.
+    // Accept the old spelling too, in case a history db written by an even
+    // older build is still around.
+    if (root.hasKey("e_initialOffsetBytes"))
     {
-        if (!root.hasKey("initialOffset")) {
-            r_err = " initialOffset not found in the history record";
-            return DOWNLOADMANAGER_RESUMESTATUS_HISTORYCORRUPT;
-        }
-        else
-        {
-            initialOffset = root["initialOffset"].asNumber<int64_t>();
-        }
+        initialOffset = strtouq((root["e_initialOffsetBytes"].asString()).c_str(),0,10);
+    }
+    else if (root.hasKey("e_initialOffset"))
+    {
+        initialOffset = strtouq((root["e_initialOffset"].asString()).c_str(),0,10);
+    }
+    else if (root.hasKey("initialOffset"))
+    {
+        initialOffset = root["initialOffset"].asNumber<int64_t>();
     }
     else
     {
-        initialOffset = strtouq((root["e_initialOffset"].asString()).c_str(),0,10);
+        r_err = " initialOffset not found in the history record";
+        return DOWNLOADMANAGER_RESUMESTATUS_HISTORYCORRUPT;
     }
 
     std::string uri = "";
@@ -806,7 +818,7 @@ int DownloadManager::resumeDownload(const DownloadHistoryDb::DownloadHistory& hi
     }
     else
     {
-        LOG_DEBUG ("%s: Will attempt to resume partial file [%s] at pos = %lu",__FUNCTION__,destTempFile.c_str(),completedSize);
+        LOG_DEBUG ("%s: Will attempt to resume partial file [%s] at pos = %" PRIu64,__FUNCTION__,destTempFile.c_str(),completedSize);
     }
 
     std::string destFinalFile = "";
@@ -878,9 +890,15 @@ int DownloadManager::resumeDownload(const DownloadHistoryDb::DownloadHistory& hi
 
     //seek to the correct place
     //LOG_DEBUG ("%s: file ptr is currently at %lu; moving file ptr to %u...",__FUNCTION__,ftell(fp),completedSize);
-    if (fseek(fp,completedSize-initialOffset,SEEK_SET) != 0)
+    // completedSize is reset to 0 above when the partial file has gone missing,
+    // in which case completedSize - initialOffset wraps around on unsigned
+    // arithmetic and turns a restart-from-scratch into a seek failure. Clamp.
+    // fseek() takes long, which is 32 bits on armv7, so use fseeko()/off_t:
+    // _FILE_OFFSET_BITS=64 makes that a 64-bit offset on every target.
+    off_t resumeAt = (off_t)((completedSize > initialOffset) ? (completedSize - initialOffset) : 0);
+    if (fseeko(fp,resumeAt,SEEK_SET) != 0)
     {
-        LOG_WARNING_PAIRS (LOGID_RESUME_FSEEK_FAIL, 1, PMLOGKFV("ptr", "%lu", ftell(fp)), "moving file ptr failed");
+        LOG_WARNING_PAIRS (LOGID_RESUME_FSEEK_FAIL, 1, PMLOGKFV("ptr", "%jd", (intmax_t)ftello(fp)), "moving file ptr failed");
         if (fclose(fp) != 0) {
             LOG_DEBUG ("Function fclose() failed");
         }
@@ -1212,18 +1230,21 @@ int DownloadManager::pauseDownload(const unsigned long ticket,bool allowQueuedTo
     std::string historyString = JUtil::toSimpleString(payloadJsonObj);
     //add to database record
     m_pDlDb->addHistory(task->ticket,task->ownerId,task->connectionName,"interrupted",historyString);
-    if (!removeTask_dl(task->ticket)) {
-        LOG_DEBUG ("Function removeTask_dl() failed");
-    }
+
+    // removeTask_dl() above already took this ticket out of both maps, so
+    // calling it again here only logged a spurious failure. Everything still
+    // needed from the task has to be copied out before _task is destroyed:
+    // deleting the TransferTask also deletes the DownloadTask it owns.
     delete _task;
+    task = NULL;
 
     // if an active task has been paused, the next download should start
     if (!m_queue.empty() && (m_activeTaskCount < DownloadSettings::instance().maxDownloadManagerConcurrent) && allowQueuedToStart) {
         unsigned long queuedTicket = m_queue.front();
         m_queue.pop_front();
-        std::map<long,DownloadTask*>::iterator iter = m_ticketMap.find(queuedTicket);
-        if (iter != m_ticketMap.end()) {
-            DownloadTask* nextDownload = iter->second;
+        std::map<long,DownloadTask*>::iterator queuedIter = m_ticketMap.find(queuedTicket);
+        if (queuedIter != m_ticketMap.end() && queuedIter->second != NULL) {
+            DownloadTask* nextDownload = queuedIter->second;
             nextDownload->queued = false;
             m_activeTaskCount++;
             requestWakeLock(true);
@@ -1232,7 +1253,7 @@ int DownloadManager::pauseDownload(const unsigned long ticket,bool allowQueuedTo
             }
             //LOG_DEBUG ("%s: starting download of ticket [%lu] for url [%s] deviceId %s authToken %s\n", __PRETTY_FUNCTION__,
                 //nextDownload->ticket, nextDownload->url.c_str(), nextDownload->authToken.c_str(), nextDownload->deviceId.c_str());
-            m_pDlDb->addHistory(nextDownload->ticket,nextDownload->ownerId,task->connectionName,"running",nextDownload->toJSONString());
+            m_pDlDb->addHistory(nextDownload->ticket,nextDownload->ownerId,nextDownload->connectionName,"running",nextDownload->toJSONString());
         }
     }
     return DOWNLOADMANAGER_PAUSESTATUS_OK;
@@ -1314,8 +1335,18 @@ int DownloadManager::swapToInterface(const unsigned long int ticket,const Connec
         break;
     case Btpan:
         ifaceName = m_btpanInterfaceName;
+        break;
     case ANY:
-        return SWAPTOIF_ERROR_INVALIDIF;        //to make switch happy
+    default:
+        // rejected at the top of the function, so this is unreachable; if it
+        // ever is reached the handle has already been pulled out of glibcurl
+        // above, so put it back rather than stranding the transfer.
+        if (pDltask->queued == false) {
+            if (glibcurl_add(pDltask->curlDesc.getHandle()) != 0) {
+                LOG_DEBUG ("Function glibcurl_add() failed");
+            }
+        }
+        return SWAPTOIF_ERROR_INVALIDIF;
     }
 
     pDltask->connectionName = DownloadManager::connectionId2Name(newInterface);
@@ -1378,18 +1409,25 @@ size_t DownloadManager::cbHeader(CURL * taskHandle,size_t headerSize,const char 
         return headerSize;
     }
 
-    std::string header = headerText;
+    // CURLOPT_HEADERFUNCTION hands over exactly headerSize bytes and does not
+    // NUL-terminate them, so the buffer has to be bounded explicitly - the
+    // std::string(const char*) constructor would read past the end of
+    // server-controlled data looking for a terminator.
+    std::string header(headerText, headerSize);
 
     ////LOG_DEBUG ("cbHeader(): %s\n",header.c_str());
     //find the :
-    size_t labelendpos = header.find(":",0);
+    size_t labelendpos = header.find(':', 0);
     if (labelendpos == std::string::npos) {
         //LOG_DEBUG ("%s: header string = %s (Function-Exit-Early)",__FUNCTION__,header.c_str());
         return headerSize;
     }
 
     std::string headerLabel = header.substr(0,labelendpos);
-    std::transform(headerLabel.begin(), headerLabel.end(), headerLabel.begin(), tolower);
+    // tolower() is only defined for unsigned char values and EOF; feeding it a
+    // plain (possibly negative) char from a non-ASCII header name is UB.
+    std::transform(headerLabel.begin(), headerLabel.end(), headerLabel.begin(),
+                   [](unsigned char c) { return static_cast<char>(tolower(c)); });
 
     std::string headerContent = header.substr(labelendpos+1,header.size());
     headerContent = trimWhitespace(headerContent);
@@ -1435,7 +1473,7 @@ size_t DownloadManager::cbHeader(CURL * taskHandle,size_t headerSize,const char 
         {
             task->bytesTotal = contentLength + task->bytesCompleted;
             task->setUpdateInterval();
-            LOG_DEBUG ("%s: Fixing up Content-Length to %lu, and this looks like a Resume download",__FUNCTION__,task->bytesTotal);
+            LOG_DEBUG ("%s: Fixing up Content-Length to %" PRIu64 ", and this looks like a Resume download",__FUNCTION__,task->bytesTotal);
         }
         else if (task->bytesCompleted == 0)
         {
@@ -1504,8 +1542,13 @@ void DownloadManager::cbGlib()
             //is it a download or an upload
             _task = removeTask(msg->easy_handle);
 
-            if (_task == NULL)
-                break;
+            if (_task == NULL) {
+                // one unknown handle is no reason to stop draining the queue:
+                // breaking here abandoned every remaining CURLMSG_DONE, so
+                // those transfers were never completed, never reported to
+                // subscribers and never freed
+                continue;
+            }
 
             if (_task->type == TransferTask::DOWNLOAD_TASK) {
 
@@ -1675,7 +1718,7 @@ size_t DownloadManager::cbReadEvent(CURL* taskHandle,size_t payloadSize,unsigned
 //        return 0; //get out
         _task->m_remove = true;
         task->bytesCompleted = 0;           //file is basically unusable here           TODO: investigate issues with append
-        LOG_DEBUG ("%s: err case: backing up to %lu bytes",__FUNCTION__,task->bytesCompleted);
+        LOG_DEBUG ("%s: err case: backing up to %" PRIu64 " bytes",__FUNCTION__,task->bytesCompleted);
         payloadSize = 0;            //this will kill the transfer when it is returned, below
         goto Return_cbReadEvent;
     }
@@ -1880,7 +1923,7 @@ void DownloadManager::completed_dl(DownloadTask* task)
     }
     else if (task->bytesCompleted < task->bytesTotal) {
         //sizes don't match...maybe a filesys error
-        LOG_DEBUG ("DownloadManager::completed(): Transfer error: bytesCompleted [%lu] < [%lu] bytesTotal...filesys error?",
+        LOG_DEBUG ("DownloadManager::completed(): Transfer error: bytesCompleted [%" PRIu64 "] < [%" PRIu64 "] bytesTotal...filesys error?",
                     task->bytesCompleted,task->bytesTotal);
         LOG_DEBUG ("DownloadManager::completed(): Transfer error: URL failed = %s\n",task->url.c_str());
         resultCode = DOWNLOADMANAGER_COMPLETIONSTATUS_FILECORRUPT;
@@ -2006,7 +2049,7 @@ void DownloadManager::completed_dl(DownloadTask* task)
             }
             //LOG_DEBUG ("%s: un-Q-ing a task, starting download of ticket [%lu] for url [%s]\n", __PRETTY_FUNCTION__,
             //      nextDownload->ticket, nextDownload->url.c_str());
-            m_pDlDb->addHistory(nextDownload->ticket,nextDownload->ownerId,task->connectionName,"running",nextDownload->toJSONString());
+            m_pDlDb->addHistory(nextDownload->ticket,nextDownload->ownerId,nextDownload->connectionName,"running",nextDownload->toJSONString());
         }
     }
     else if (m_queue.empty() && m_activeTaskCount == 0) {
@@ -2087,11 +2130,15 @@ bool DownloadManager::cancel( unsigned long ticket )
     jsonPayloadObj.put("interrupted", false);
 
     std::string payload = JUtil::toSimpleString(jsonPayloadObj);
+    // Failing to notify subscribers used to return here, but removeTask() at
+    // the top of this function has already taken the task out of both maps:
+    // bailing out leaked the TransferTask, left the partial file on disk and
+    // never wrote the "cancelled" history record, so the ticket became
+    // unreachable and uncancellable. Log and carry on with the teardown.
     if (!postDownloadUpdate (task->ownerId, task->ticket, payload)) {
         LOG_WARNING_PAIRS (LOGID_SUBSCRIPTIONREPLY_FAIL_ON_CANCEL, 2, PMLOGKS("ticket", key.c_str()),
                                                                     PMLOGKS("detail", payload.c_str()),
                                                                     "failed to update cancellation status to subscribers");
-        return false;
     }
 
     // remove file if the download has been cancelled.
@@ -2162,10 +2209,15 @@ void DownloadManager::cancelFromHistory(DownloadHistoryDb::DownloadHistory& hist
         }
     }
 
-    std::string payload = std::string("{\"ticket\":")+key
-    +(!extractError ? std::string(" , \"url\":\"")+uri+std::string("\"") : std::string(""))
-    +std::string(" , \"aborted\":true")
-    +std::string(" , \"completed\":false }");
+    // uri comes out of the stored history record, so it has to be escaped by
+    // the serializer rather than pasted between quotes
+    pbnjson::JValue payloadJsonObj = pbnjson::Object();
+    payloadJsonObj.put("ticket", (int64_t)history.m_ticket);
+    if (!extractError)
+        payloadJsonObj.put("url", uri);
+    payloadJsonObj.put("aborted", true);
+    payloadJsonObj.put("completed", false);
+    std::string payload = JUtil::toSimpleString(payloadJsonObj);
     if (!postDownloadUpdate (history.m_owner, history.m_ticket, payload)) {
         LOG_WARNING_PAIRS (LOGID_SUBSCRIPTIONREPLY_FAIL_ON_CANCELHISTORY, 2, PMLOGKS("ticket", key.c_str()),
                                                                     PMLOGKS("detail", payload.c_str()),
@@ -2221,8 +2273,12 @@ int DownloadManager::getJSONListOfAllDownloads(std::vector<std::string>& downloa
     while (iter != m_ticketMap.end()) {
 
         DownloadTask * task = iter->second;
-        if (task == NULL)
-            continue;       //this shouldn't happen!
+        if (task == NULL) {
+            //this shouldn't happen! - but skipping without advancing the
+            //iterator used to spin this loop forever, hanging the service
+            iter++;
+            continue;
+        }
 
                 //TODO: maybe a harsher response for debugging purposes; error of this type can't really be handled here
                 //- but if it happens, root cause should be found and fixed
@@ -2284,13 +2340,15 @@ bool DownloadManager::spaceCheckOnFs(const std::string& path,uint64_t thresholdK
 
     if (DownloadSettings::instance().dbg_useStatfsFake)
     {
-        fs_stats.f_bfree = DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes / fs_stats.f_frsize;
-        LOG_DEBUG ("%s: USING FAKE STATFS VALUES! (free bytes specified as: %lu, free blocks simulated to: %lu )",
-                        __FUNCTION__,DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes,fs_stats.f_bfree);
+        fs_stats.f_bfree = (fs_stats.f_frsize != 0)
+                               ? (DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes / fs_stats.f_frsize)
+                               : 0;   //f_frsize can be 0 on pseudo filesystems
+        LOG_DEBUG ("%s: USING FAKE STATFS VALUES! (free bytes specified as: %" PRIu64 ", free blocks simulated to: %" PRIu64 " )",
+                        __FUNCTION__,DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes,(uint64_t)fs_stats.f_bfree);
     }
 
     uint64_t kbfree = ( ((uint64_t)(fs_stats.f_bfree) * (uint64_t)(fs_stats.f_frsize)) >> 10);
-    LOG_DEBUG ("%s: [%s] KB free = %lu vs. %lu KB threshold",__FUNCTION__,path.c_str(),kbfree,thresholdKB);
+    LOG_DEBUG ("%s: [%s] KB free = %" PRIu64 " vs. %" PRIu64 " KB threshold",__FUNCTION__,path.c_str(),kbfree,thresholdKB);
     if (kbfree  >= thresholdKB)
         return true;
     return false;
@@ -2311,14 +2369,16 @@ bool DownloadManager::spaceOnFs(const std::string& path,uint64_t& spaceFreeKB,ui
 
     if (DownloadSettings::instance().dbg_useStatfsFake)
     {
-        fs_stats.f_bfree = DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes / fs_stats.f_frsize;
-        LOG_DEBUG ("%s: USING FAKE STATFS VALUES! (free bytes specified as: %lu, free blocks simulated to: %lu )",
-                __FUNCTION__,DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes,fs_stats.f_bfree);
+        fs_stats.f_bfree = (fs_stats.f_frsize != 0)
+                               ? (DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes / fs_stats.f_frsize)
+                               : 0;   //f_frsize can be 0 on pseudo filesystems
+        LOG_DEBUG ("%s: USING FAKE STATFS VALUES! (free bytes specified as: %" PRIu64 ", free blocks simulated to: %" PRIu64 " )",
+                __FUNCTION__,DownloadSettings::instance().dbg_statfsFakeFreeSizeBytes,(uint64_t)fs_stats.f_bfree);
     }
 
     spaceFreeKB = ( ((uint64_t)(fs_stats.f_bavail) * (uint64_t)(fs_stats.f_frsize)) >> 10);
     spaceTotalKB = ( ((uint64_t)(fs_stats.f_blocks) * (uint64_t)(fs_stats.f_frsize)) >> 10);
-    LOG_DEBUG ("%s: [%s] KB free = %lu, KB total = %lu",__FUNCTION__,path.c_str(),spaceFreeKB,spaceTotalKB);
+    LOG_DEBUG ("%s: [%s] KB free = %" PRIu64 ", KB total = %" PRIu64,__FUNCTION__,path.c_str(),spaceFreeKB,spaceTotalKB);
     return true;
 }
 
@@ -2634,6 +2694,16 @@ void DownloadManager::startupGlibCurl()
     glibcurl_init();
     glibcurl_set_callback(&cbGlibcurl,this);
 
+    // shutdownGlibCurl()/startupGlibCurl() are cycled every time the queue
+    // drains (see cbIdleSourceGlibcurlCleanup), so a fresh share handle here
+    // without releasing the previous one leaked one per cycle.
+    if (s_curlShareHandle) {
+        CURLSHcode shrc = curl_share_cleanup(s_curlShareHandle);
+        if (shrc != CURLSHE_OK) {
+            LOG_DEBUG ("Function curl_share_cleanup() failed [%d]", shrc);
+        }
+        s_curlShareHandle = 0;
+    }
     s_curlShareHandle = curl_share_init();
     if (curl_share_setopt(s_curlShareHandle, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS) != 0) {
         LOG_DEBUG ("Function curl_share_setopt() failed");
@@ -2671,6 +2741,16 @@ void DownloadManager::shutdownGlibCurl()
     m_activeTaskCount = 0;
 
     m_glibCurlInitialized = false;
+
+    // before glibcurl_cleanup(), which calls curl_global_cleanup()
+    if (s_curlShareHandle) {
+        CURLSHcode shrc = curl_share_cleanup(s_curlShareHandle);
+        if (shrc != CURLSHE_OK) {
+            LOG_DEBUG ("Function curl_share_cleanup() failed [%d]", shrc);
+        }
+        s_curlShareHandle = 0;
+    }
+
     glibcurl_cleanup();
 
     return;

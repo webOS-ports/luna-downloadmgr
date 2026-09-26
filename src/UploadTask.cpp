@@ -28,6 +28,44 @@ uint32_t UploadTask::s_genid = 1;
  *
  */
 
+namespace {
+
+// Fill in one multipart part. Only sets the content type when one was given:
+// curl_mime_type(part, "") would emit an empty Content-Type header, whereas
+// curl_formadd() skipped CURLFORM_CONTENTTYPE with an empty string.
+bool addMimePart(curl_mimepart * part, const std::string& name,
+                 const std::string& contentType, const std::string& data,
+                 bool dataIsAFilePath)
+{
+    CURLcode rc;
+
+    if ((rc = curl_mime_name(part, name.c_str())) != CURLE_OK) {
+        LOG_DEBUG ("curl_mime_name() failed [%d]", rc);
+        return false;
+    }
+
+    if (!contentType.empty()
+            && (rc = curl_mime_type(part, contentType.c_str())) != CURLE_OK) {
+        LOG_DEBUG ("curl_mime_type() failed [%d]", rc);
+        return false;
+    }
+
+    if (dataIsAFilePath)
+        rc = curl_mime_filedata(part, data.c_str());
+    else
+        rc = curl_mime_data(part, data.c_str(), CURL_ZERO_TERMINATED);
+
+    if (rc != CURLE_OK) {
+        LOG_DEBUG ("%s() failed [%d]",
+                   dataIsAFilePath ? "curl_mime_filedata" : "curl_mime_data", rc);
+        return false;
+    }
+
+    return true;
+}
+
+}   // namespace
+
 //static
 UploadTask * UploadTask::newFileUploadTask(const std::string& targeturl,const std::string& sourcefile,const std::string& filemimepartlabel,std::vector<PostItem>& postparts,
          std::vector<std::string>& httpheaders,std::vector<kvpair>& cookies,const std::string& contenttype)
@@ -49,50 +87,48 @@ UploadTask * UploadTask::newFileUploadTask(const std::string& targeturl,const st
      * UploadTask(const std::string& url,const std::string file,const std::string& data,uint32_t id,const std::vector<kvpair> * postparts,const std::string& contenttype,CURL * p_curl); */
     UploadTask * p_ult = new UploadTask(targeturl,sourcefile,"",UploadTask::genNewId(),&postparts,contenttype,p_curl);
 
-    // set the form info
-    struct curl_httppost *last=NULL;
-    int checkFormadd = 0;
+    // Build the multipart body. curl_formadd()/CURLOPT_HTTPPOST have been
+    // deprecated since libcurl 7.56 in favour of the mime API; the mapping is
+    // CURLFORM_COPYNAME -> curl_mime_name(), CURLFORM_CONTENTTYPE ->
+    // curl_mime_type(), CURLFORM_COPYCONTENTS -> curl_mime_data() and
+    // CURLFORM_FILE -> curl_mime_filedata(). Both copy the name and the inline
+    // data, so the std::strings here still do not have to outlive this call.
+    p_ult->m_p_mime = curl_mime_init(p_curl);
+    if (p_ult->m_p_mime == NULL) {
+        LOG_DEBUG ("Function curl_mime_init() failed");
+        delete p_ult;                   // ~UploadTask cleans up p_curl
+        return NULL;
+    }
+
     for (std::vector<PostItem>::iterator it = postparts.begin(); it != postparts.end();++it) {
-        //checkFormadd = curl_formadd(&(p_ult->m_p_httpPostList), &last, CURLFORM_COPYNAME, it->first.c_str(), CURLFORM_COPYCONTENTS,it->second.c_str(), CURLFORM_END);
+        if (((*it)._type != PostItem::Value) && ((*it)._type != PostItem::File))
+            continue;
 
-        if ((*it)._type == PostItem::Value) {
-            //this is a value part...  use CURLFORM_COPYCONTENTS
-            checkFormadd = curl_formadd(&(p_ult->m_p_httpPostList), &last, CURLFORM_COPYNAME, (*it)._key.c_str(), CURLFORM_CONTENTTYPE, (*it)._contentType.c_str(), CURLFORM_COPYCONTENTS, (*it)._data.c_str(), CURLFORM_END);
+        curl_mimepart * part = curl_mime_addpart(p_ult->m_p_mime);
+        if (part == NULL) {
+            LOG_DEBUG ("Function curl_mime_addpart() failed");
+            continue;
         }
-        else if ((*it)._type == PostItem::File) {
-            //this is a file part... use CURLFORM_FILE
-            checkFormadd = curl_formadd(&(p_ult->m_p_httpPostList), &last, CURLFORM_COPYNAME, (*it)._key.c_str(), CURLFORM_CONTENTTYPE,(*it)._contentType.c_str(),CURLFORM_FILE,(*it)._data.c_str(), CURLFORM_END);
-        }
+
+        if (!addMimePart(part, (*it)._key, (*it)._contentType,
+                         (*it)._data, (*it)._type == PostItem::File))
+            LOG_DEBUG ("Failed to add post part [%s]", (*it)._key.c_str());
     }
 
-    if (checkFormadd != 0) {
-        LOG_DEBUG ("Function curl_formadd() failed");
+    // ...and the file itself. curl_mime_filedata() derives the part's filename
+    // from the path, which is what CURLFORM_FILE did.
+    curl_mimepart * filePart = curl_mime_addpart(p_ult->m_p_mime);
+    if (filePart == NULL) {
+        LOG_DEBUG ("Function curl_mime_addpart() failed for the file part");
     }
-
-    //if there is a content type specified, prepare curl headers especially for it
-    if (contenttype.size()) {
-
-        std::string ctheader = std::string("Content-Type: ")+contenttype;
-        p_ult->m_p_curlFilePartHeaderList = curl_slist_append(p_ult->m_p_curlFilePartHeaderList,ctheader.c_str());
-    }
-
-    if (contenttype.size())
-        checkFormadd = curl_formadd(&(p_ult->m_p_httpPostList),
-                &last,CURLFORM_COPYNAME, filemimepartlabel.c_str()
-//              , CURLFORM_CONTENTHEADER, p_ult->m_p_curlFilePartHeaderList
-                , CURLFORM_FILE, sourcefile.c_str()
-                , CURLFORM_CONTENTTYPE, p_ult->m_contentType.c_str()
-                , CURLFORM_END);
-    else
-        checkFormadd = curl_formadd(&(p_ult->m_p_httpPostList), &last,CURLFORM_COPYNAME, filemimepartlabel.c_str(), CURLFORM_FILE, sourcefile.c_str(), CURLFORM_END);
-
-    if (checkFormadd != 0) {
-        LOG_DEBUG ("Function curl_formadd() failed");
+    else if (!addMimePart(filePart, filemimepartlabel, p_ult->m_contentType,
+                          sourcefile, true)) {
+        LOG_DEBUG ("Failed to add the file part for [%s]", sourcefile.c_str());
     }
 
     CURLcode rc = CURLE_OK;
-    if ((rc = curl_easy_setopt(p_curl, CURLOPT_HTTPPOST, (p_ult->m_p_httpPostList))) != CURLE_OK) {
-        LOG_DEBUG("curl set opt: CURLOPT_HTTPPOST failed [%d]\n", rc);
+    if ((rc = curl_easy_setopt(p_curl, CURLOPT_MIMEPOST, p_ult->m_p_mime)) != CURLE_OK) {
+        LOG_DEBUG("curl set opt: CURLOPT_MIMEPOST failed [%d]\n", rc);
     }
 
     // set http headers
@@ -105,7 +141,7 @@ UploadTask * UploadTask::newFileUploadTask(const std::string& targeturl,const st
         cookiestr += it->first + std::string("=") + it->second + std::string("; ");
     }
     if ((rc = curl_easy_setopt(p_curl, CURLOPT_COOKIE,cookiestr.c_str())) != CURLE_OK)
-        LOG_DEBUG("curl set opt: CURLOPT_HTTPPOST failed [%d]\n", rc);
+        LOG_DEBUG("curl set opt: CURLOPT_COOKIE failed [%d]\n", rc);
     if ((rc = curl_easy_setopt(p_curl, CURLOPT_CAPATH, DOWNLOADMANAGER_TRUSTED_CERT_PATH)) != CURLE_OK)
         LOG_DEBUG("curl set opt: CURLOPT_CAPATH failed [%d]\n", rc);
     if ((rc = curl_easy_setopt(p_curl, CURLOPT_WRITEFUNCTION, DownloadManager::cbUploadResponse)) != CURLE_OK)
@@ -146,13 +182,16 @@ UploadTask * UploadTask::newBufferUploadTask(const std::string& targeturl,const 
     UploadTask * p_ult = new UploadTask(targeturl,sourcebuffer,"",UploadTask::genNewId(),NULL,contenttype,p_curl);
 
     CURLcode rc = CURLE_OK;
-    if ((rc = curl_easy_setopt (p_ult->m_p_curlHandle, CURLOPT_POSTFIELDS, sourcebuffer.c_str())) != CURLE_OK)
-        LOG_DEBUG("curl set opt: CURLOPT_POSTFIELDS failed [%d]\n", rc);
-    if ((rc = curl_easy_setopt (p_ult->m_p_curlHandle, CURLOPT_POSTFIELDSIZE,sourcebuffer.length())) != CURLE_OK)
-        LOG_DEBUG("curl set opt: CURLOPT_POSTFIELDSIZE failed [%d]\n", rc);
+    // CURLOPT_POSTFIELDS does not copy: libcurl keeps the pointer and reads it
+    // while the transfer runs, long after this caller's std::string has gone
+    // out of scope. Set the size first, then COPYPOSTFIELDS, so libcurl takes
+    // its own copy of exactly sourcebuffer.length() bytes (the buffer may
+    // legitimately contain NULs).
+    if ((rc = curl_easy_setopt (p_ult->m_p_curlHandle, CURLOPT_POSTFIELDSIZE_LARGE,(curl_off_t)sourcebuffer.length())) != CURLE_OK)
+        LOG_DEBUG("curl set opt: CURLOPT_POSTFIELDSIZE_LARGE failed [%d]\n", rc);
+    if ((rc = curl_easy_setopt (p_ult->m_p_curlHandle, CURLOPT_COPYPOSTFIELDS, sourcebuffer.c_str())) != CURLE_OK)
+        LOG_DEBUG("curl set opt: CURLOPT_COPYPOSTFIELDS failed [%d]\n", rc);
     // LOG_DEBUG ("%s: sending postfield %s with postfieldsize %d", __func__, sourcebuffer.c_str(), sourcebuffer.length());
-
-    // curl_easy_setopt(p_ult->m_p_curlHandle, CURLOPT_HTTPPOST, (p_ult->m_p_httpPostList));
 
     // set http headers
     p_ult->setHTTPHeaders(httpheaders);
@@ -162,7 +201,7 @@ UploadTask * UploadTask::newBufferUploadTask(const std::string& targeturl,const 
     if ((rc = curl_easy_setopt(p_curl, CURLOPT_WRITEFUNCTION, DownloadManager::cbUploadResponse)) != CURLE_OK)
         LOG_DEBUG("curl set opt: CURLOPT_WRITEFUNCTION failed [%d]\n", rc);
     if ((rc = curl_easy_setopt(p_curl, CURLOPT_WRITEDATA,p_ult)) != CURLE_OK)
-        LOG_DEBUG("curl set opt: CURLOPT_WRITEFUNCTION failed [%d]\n", rc);
+        LOG_DEBUG("curl set opt: CURLOPT_WRITEDATA failed [%d]\n", rc);
     if ((rc = curl_easy_setopt(p_curl, CURLOPT_WRITEHEADER,p_curl)) != CURLE_OK)
         LOG_DEBUG("curl set opt: CURLOPT_WRITEHEADER failed [%d]\n", rc);
     if ((rc = curl_easy_setopt(p_curl, CURLOPT_HEADERFUNCTION, DownloadManager::cbCurlHeaderInfo)) != CURLE_OK)
@@ -176,8 +215,7 @@ UploadTask::UploadTask()
 :   m_ulid(0) ,
     m_p_curlHandle(nullptr) ,
     m_p_curlHeaderList(0) ,
-    m_p_curlFilePartHeaderList(0) ,
-    m_p_httpPostList(0) ,
+    m_p_mime(0) ,
     m_curlResultCode(CURLE_OK) ,
     m_httpResultCode(0)
 {
@@ -192,24 +230,12 @@ UploadTask::UploadTask(const std::string& url,const std::string& file,const std:
     m_contentType(contenttype) ,
     m_p_curlHandle(p_curl) ,
     m_p_curlHeaderList(0) ,
-    m_p_curlFilePartHeaderList(0) ,
-    m_p_httpPostList(0) ,
+    m_p_mime(0) ,
     m_curlResultCode(CURLE_OK) ,
     m_httpResultCode(0)
 {
         if (postparts)
             m_postParts = *postparts;
-}
-
-UploadTask::UploadTask(const UploadTask& c)
-:   m_ulid(c.m_ulid) ,
-    m_p_curlHandle(c.m_p_curlHandle) ,
-    m_p_curlHeaderList(c.m_p_curlHeaderList) ,
-    m_p_curlFilePartHeaderList(c.m_p_curlFilePartHeaderList) ,
-    m_p_httpPostList(c.m_p_httpPostList) ,
-    m_curlResultCode(c.m_curlResultCode) ,
-    m_httpResultCode(c.m_httpResultCode)
-{
 }
 
 void UploadTask::setHTTPHeaders(std::vector<std::string>& headerList)
@@ -237,11 +263,12 @@ UploadTask::~UploadTask()
     if (m_p_curlHeaderList) {
         curl_slist_free_all(m_p_curlHeaderList);
     }
-    if (m_p_httpPostList) {
-         curl_formfree(m_p_httpPostList);
-    }
-    if (m_p_curlFilePartHeaderList) {
-        curl_slist_free_all(m_p_curlFilePartHeaderList);
+    // The mime structure belongs to the easy handle it was created for, so it
+    // has to go first: using or freeing it after curl_easy_cleanup() is
+    // undefined.
+    if (m_p_mime) {
+        curl_mime_free(m_p_mime);
+        m_p_mime = 0;
     }
 
     curl_easy_cleanup(m_p_curlHandle);
