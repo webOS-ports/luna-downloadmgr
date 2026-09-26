@@ -18,6 +18,7 @@
 #define DOWNLOADUTILS_H
 
 #include <stdio.h>
+#include <stdint.h>
 #include <string>
 #include <sstream>
 #include <iostream>
@@ -45,6 +46,6 @@ bool processSubscription(LSHandle * serviceHandle, LSMessage * message,const std
 uint32_t removeSubscriptions(const std::string& key,LSHandle * serviceHandle);
 
 bool doesExistOnFilesystem(const char * pathAndFile);
-int filesizeOnFilesystem(const char * pathAndFile);
+int64_t filesizeOnFilesystem(const char * pathAndFile);
 
 #endif

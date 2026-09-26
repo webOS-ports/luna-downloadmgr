@@ -54,22 +54,22 @@ static void turnNovacomOn(LSHandle * lshandle);
 ///////// --------------------------------------------------------------------------- LUNA BUS FUNCTIONS ----------------------------------------
 
 static LSMethod s_methods[]  = {
-    { "deleteDownloadedFile",       DownloadManager::cbDeleteDownloadedFile},
-    { "downloadStatusQuery",        DownloadManager::cbDownloadStatusQuery },
-    { "download",                   DownloadManager::cbDownload },
-    { "resumeDownload",             DownloadManager::cbResumeDownload },
-    { "pauseDownload",              DownloadManager::cbPauseDownload },
-    { "cancelDownload",             DownloadManager::cbCancelDownload },
-    { "cancelUpload",               DownloadManager::cbCancelDownload },                //just an alias and a bit of a misnomer: cancelDownload will cancel either an upload or download
-    { "cancelAllDownloads",         DownloadManager::cbCancelAllDownloads },
-    { "listPending",                DownloadManager::cbListPendingDownloads },
-    { "getAllHistory",              DownloadManager::cbGetAllHistory },
-    { "clearHistory",               DownloadManager::cbClearDownloadHistory },
-    { "upload",                     DownloadManager::cbUpload },
-    { "filesysStatusCheck",         DownloadManager::cbFsStatusCheck},
-    { "is1xMode",                   DownloadManager::cbConnectionType},
-    { "allow1x",                    cbAllow1x },
-    { 0, 0 },
+    { "deleteDownloadedFile",       DownloadManager::cbDeleteDownloadedFile, LUNA_METHOD_FLAGS_NONE },
+    { "downloadStatusQuery",        DownloadManager::cbDownloadStatusQuery,  LUNA_METHOD_FLAGS_NONE },
+    { "download",                   DownloadManager::cbDownload,             LUNA_METHOD_FLAGS_NONE },
+    { "resumeDownload",             DownloadManager::cbResumeDownload,       LUNA_METHOD_FLAGS_NONE },
+    { "pauseDownload",              DownloadManager::cbPauseDownload,        LUNA_METHOD_FLAGS_NONE },
+    { "cancelDownload",             DownloadManager::cbCancelDownload,       LUNA_METHOD_FLAGS_NONE },
+    { "cancelUpload",               DownloadManager::cbCancelDownload,       LUNA_METHOD_FLAGS_NONE },   //just an alias and a bit of a misnomer: cancelDownload will cancel either an upload or download
+    { "cancelAllDownloads",         DownloadManager::cbCancelAllDownloads,   LUNA_METHOD_FLAGS_NONE },
+    { "listPending",                DownloadManager::cbListPendingDownloads, LUNA_METHOD_FLAGS_NONE },
+    { "getAllHistory",              DownloadManager::cbGetAllHistory,        LUNA_METHOD_FLAGS_NONE },
+    { "clearHistory",               DownloadManager::cbClearDownloadHistory, LUNA_METHOD_FLAGS_NONE },
+    { "upload",                     DownloadManager::cbUpload,               LUNA_METHOD_FLAGS_NONE },
+    { "filesysStatusCheck",         DownloadManager::cbFsStatusCheck,        LUNA_METHOD_FLAGS_NONE },
+    { "is1xMode",                   DownloadManager::cbConnectionType,       LUNA_METHOD_FLAGS_NONE },
+    { "allow1x",                    cbAllow1x,                               LUNA_METHOD_FLAGS_NONE },
+    { 0, 0, LUNA_METHOD_FLAGS_NONE },
 };
 
 void DownloadManager::startService()
@@ -834,12 +834,12 @@ Done:
             pbnjson::JValue statusObj = JUtil::parse(it->m_downloadRecordJsonString.c_str(), std::string(""));
             if (!statusObj.isNull())
             {
-                for(pbnjson::JValue::ObjectIterator it = statusObj.begin(); it != statusObj.end(); ++it)
+                for(pbnjson::JValue::ObjectIterator statusIt = statusObj.begin(); statusIt != statusObj.end(); ++statusIt)
                 {
-                    std::string strKey = (*it).first.asString();
+                    std::string strKey = (*statusIt).first.asString();
                     if (strKey == std::string("target"))
                     {
-                       std::string strVal = (*it).second.asString();
+                       std::string strVal = (*statusIt).second.asString();
                        if (doesExistOnFilesystem(strVal.c_str()))
                         {
                             item.put("fileExistsOnFilesys", true);
@@ -1449,21 +1449,22 @@ bool DownloadManager::cbUpload (LSHandle* lshandle, LSMessage* msg, void* user_d
             if (jo.isNull())
                 continue;
 
-            std::string key,data,contentType;
+            // named distinctly from the request-level contentType it shadowed
+            std::string key,data,partContentType;
             key = jo["key"].asString();
             data = jo["data"].asString();
-            contentType = jo["contentType"].asString();
+            partContentType = jo["contentType"].asString();
 
             // check MIME parameter validity in "postParameters"
             if(jo.hasKey("contentType")) {
-                if (!boost::regex_match(contentType, regMIME)) {
+                if (!boost::regex_match(partContentType, regMIME)) {
                     errorCode = DOWNLOADMANAGER_UPLOADSTATUS_INVALIDPARAM;
                     errorText = "Invalid MIME type";
                     goto Done_cbUp;
                 }
             }
 
-            postHeaders.push_back(PostItem(key,data,PostItem::Value,contentType));
+            postHeaders.push_back(PostItem(key,data,PostItem::Value,partContentType));
         }
     }
 

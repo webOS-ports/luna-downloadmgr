@@ -62,15 +62,18 @@ bool doesExistOnFilesystem(const char * pathAndFile) {
 
 }
 
-int filesizeOnFilesystem(const char * pathAndFile)
+int64_t filesizeOnFilesystem(const char * pathAndFile)
 {
     if (pathAndFile == NULL)
         return 0;
 
+    // st_size is off_t, 64-bit here thanks to _FILE_OFFSET_BITS=64; returning it
+    // as int truncated every downloaded file over 2GB (and reported a negative
+    // size for some of them) in getAllHistory's fileSizeOnFilesys field.
     struct stat buf;
     if (-1 == ::stat(pathAndFile, &buf ) )
         return 0;
-    return buf.st_size;
+    return (int64_t)buf.st_size;
 }
 
 std::string trimWhitespace(const std::string& s,const std::string& drop)
