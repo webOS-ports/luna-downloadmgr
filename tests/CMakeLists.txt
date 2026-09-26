@@ -1,6 +1,4 @@
-#!/bin/bash
-
-# Copyright (c) 2012-2018 LG Electronics, Inc.
+# Copyright (c) 2026 LG Electronics, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,8 +14,16 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-for ((  i = 0 ;  i <= 50000;  i++  ))
-do
-   luna-send -n 1 luna://com.webos.service.downloadmanager/download '{"target":"http://ftp13.us.freebsd.org/pub/FreeBSD/ISO-IMAGES-i386/8.0/CHECKSUM.SHA256","subscribe":true}'
-done
+if(ENABLE_TESTS)
+    add_subdirectory(unit)
+endif()
 
+if(ENABLE_FUZZERS)
+    add_subdirectory(fuzz)
+endif()
+
+install(PROGRAMS
+        stress/ldm-stress.sh
+        stress/ldm-origin.py
+        DESTINATION ${WEBOS_INSTALL_DATADIR}/luna-downloadmgr/tests
+        OPTIONAL)
