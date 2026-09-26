@@ -32,15 +32,21 @@ UrlRep UrlRep::fromUrl(const char* uri)
 
     UriParserStateA state;
     UriUriA uriA;
-    UriQueryListA* queryList;
-    int queryCount;
+    UriQueryListA* queryList = NULL;
+    int queryCount = 0;
 
     state.uri = &uriA;
 
     urlRep.query.clear();
 
-    if (uriParseUriA(&state, uri) != URI_SUCCESS)
+    if (uriParseUriA(&state, uri) != URI_SUCCESS) {
+        // uriParseUriA() may have allocated part of the UriUriA before it hit
+        // the malformed byte; the members have to be released on the failure
+        // path too or every rejected URL leaks. Download and upload URLs come
+        // straight from the caller, so this is trivially reachable.
+        uriFreeUriMembersA(&uriA);
         return urlRep;
+    }
 
     urlRep.scheme = URI_TEXT_RANGE_TO_STRING(uriA.scheme);
     urlRep.userInfo = URI_TEXT_RANGE_TO_STRING(uriA.userInfo);
@@ -62,20 +68,23 @@ UrlRep UrlRep::fromUrl(const char* uri)
         urlRep.resource = URI_TEXT_RANGE_TO_STRING((uriA.pathTail)->text);
 
     if (uriA.query.first) {
-        (void) uriDissectQueryMallocA(&queryList, &queryCount,
-                               uriA.query.first,
-                               uriA.query.afterLast);
-
-        UriQueryListA* tmpQueryList = queryList;
-        while (tmpQueryList) {
-            if (tmpQueryList->key) {
-                urlRep.query[tmpQueryList->key] = tmpQueryList->value ?
-                                                  tmpQueryList->value : std::string();
+        // uriDissectQueryMallocA() only sets queryList when it succeeds, so the
+        // result has to be checked: walking an uninitialized pointer here meant
+        // a malformed query string could send us through arbitrary memory.
+        if (uriDissectQueryMallocA(&queryList, &queryCount,
+                                   uriA.query.first,
+                                   uriA.query.afterLast) == URI_SUCCESS) {
+            UriQueryListA* tmpQueryList = queryList;
+            while (tmpQueryList) {
+                if (tmpQueryList->key) {
+                    urlRep.query[tmpQueryList->key] = tmpQueryList->value ?
+                                                      tmpQueryList->value : std::string();
+                }
+                tmpQueryList = tmpQueryList->next;
             }
-            tmpQueryList = tmpQueryList->next;
-        }
 
-        uriFreeQueryListA(queryList);
+            uriFreeQueryListA(queryList);
+        }
     }
 
     uriFreeUriMembersA(&uriA);
