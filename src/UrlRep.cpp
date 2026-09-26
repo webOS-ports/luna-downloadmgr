@@ -40,10 +40,11 @@ UrlRep UrlRep::fromUrl(const char* uri)
     urlRep.query.clear();
 
     if (uriParseUriA(&state, uri) != URI_SUCCESS) {
-        // uriParseUriA() may have allocated part of the UriUriA before it hit
-        // the malformed byte; the members have to be released on the failure
-        // path too or every rejected URL leaks. Download and upload URLs come
-        // straight from the caller, so this is trivially reachable.
+        // uriparser's own documentation for this (legacy) entry point puts the
+        // cleanup on the caller, so release the members here rather than relying
+        // on the implementation. Measured against uriparser 1.0.2: the parser
+        // does clean up after itself on failure, and uriFreeUriMembersA() is
+        // idempotent, so this is belt-and-braces rather than a leak fix.
         uriFreeUriMembersA(&uriA);
         return urlRep;
     }
@@ -68,9 +69,14 @@ UrlRep UrlRep::fromUrl(const char* uri)
         urlRep.resource = URI_TEXT_RANGE_TO_STRING((uriA.pathTail)->text);
 
     if (uriA.query.first) {
-        // uriDissectQueryMallocA() only sets queryList when it succeeds, so the
-        // result has to be checked: walking an uninitialized pointer here meant
-        // a malformed query string could send us through arbitrary memory.
+        // uriDissectQueryMallocA() leaves *queryList untouched when it fails
+        // (verified against uriparser 1.0.2: URI_ERROR_RANGE_INVALID and
+        // URI_ERROR_NULL both return without writing it), so the previous code -
+        // uninitialized local, return value cast to void - would have walked
+        // whatever was on the stack. uriparser's post-parse invariants make that
+        // unreachable from here today, since query.first/afterLast always
+        // describe a valid range; initializing and checking costs nothing and
+        // removes the dependency on that.
         if (uriDissectQueryMallocA(&queryList, &queryCount,
                                    uriA.query.first,
                                    uriA.query.afterLast) == URI_SUCCESS) {
