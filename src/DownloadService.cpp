@@ -1466,10 +1466,16 @@ bool DownloadManager::cbUpload (LSHandle* lshandle, LSMessage* msg, void* user_d
         pbnjson::JValue jo;
         for (int idx=0;idx<jo_httpheaders.arraySize();++idx) {
             jo = jo_httpheaders[idx];
-            if (jo.isNull())
+            // Take the string, don't re-serialise it. JUtil::toSimpleString()
+            // is JGenerator::serialize() with a schema, which renders a JSON
+            // document - so a header element came back with its JSON quotes
+            // still attached ("X-Foo: bar"), and curl then sent a header whose
+            // name was literally "X-Foo. The caller saw its headers accepted
+            // and silently not applied. pbnjson has a quoteSingleString=false
+            // overload for exactly this case; asString() is plainer still.
+            if (!jo.isString())
                 continue;
-            std::string s = JUtil::toSimpleString(jo);
-            httpHeaders.push_back(std::move(s));
+            httpHeaders.push_back(jo.asString());
         }
     }
 
