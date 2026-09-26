@@ -127,8 +127,10 @@ private:
 
     CURL *                              m_p_curlHandle;
     struct curl_slist *                 m_p_curlHeaderList;
-    struct curl_slist *                 m_p_curlFilePartHeaderList;
-    struct curl_httppost *              m_p_httpPostList;
+    // Multipart body, replacing the curl_httppost list that CURLOPT_HTTPPOST
+    // took. Bound to m_p_curlHandle, so it must be released before the easy
+    // handle is cleaned up - see the destructor.
+    curl_mime *                         m_p_mime;
     CURLcode                            m_curlResultCode;
     uint32_t                            m_httpResultCode;
 

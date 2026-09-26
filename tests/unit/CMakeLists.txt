@@ -21,7 +21,8 @@ set(UNIT_TESTS
     test_pathutils
     test_settings
     test_taskjson
-    test_fsstatus)
+    test_fsstatus
+    test_upload)
 
 foreach(t ${UNIT_TESTS})
     add_executable(${t} ${t}.cpp test_support.cpp)
