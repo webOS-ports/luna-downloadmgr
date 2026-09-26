@@ -134,6 +134,15 @@ public:
 
     DownloadTask();
     ~DownloadTask();
+
+    // Owns fp (fclose'd in the destructor) and curlDesc's handle, neither of
+    // which the implicit copies duplicate: a copy would double-close the file
+    // and leave two objects pointing at one curl handle. Nothing copies a
+    // DownloadTask - getDownloadTaskCopy() assigns the fields it wants
+    // individually - so say so rather than leaving the trap armed.
+    DownloadTask(const DownloadTask&) = delete;
+    DownloadTask& operator=(const DownloadTask&) = delete;
+
     void setMimeType(const std::string& type);
     std::string toJSONString();
     pbnjson::JValue toJSON();
@@ -163,7 +172,10 @@ public:
     bool appendTargetFile;
 
     // rfc2616 (HTTP/1.1) recommends maximum of five redirections.
-    static const int MAXREDIRECTIONS = 5;
+    // constexpr, not const: a static const int declared in-class with no
+    // out-of-line definition fails to link the moment anything odr-uses it
+    // (binds a reference to it), which a test assertion does.
+    static constexpr int MAXREDIRECTIONS = 5;
 
 private:
     // Remaining redirection counts

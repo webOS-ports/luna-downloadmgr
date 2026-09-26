@@ -82,9 +82,6 @@ class DownloadManager: public Singleton<DownloadManager>
 public:
 
     unsigned long generateNewTicket();
-    enum {
-            keepOriginalFilenameOnRedirect = 16
-    };
 
     enum ConnectionStatus {
             InetConnectionUnknownState,

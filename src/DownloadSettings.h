@@ -67,15 +67,16 @@ public:
     bool            dbg_useStatfsFake;
     uint64_t        dbg_statfsFakeFreeSizeBytes;
 
+    //! Is this a path the download directory is allowed to be moved to?
+    //! Pure predicate, public so tests/unit/test_settings.cpp can exercise it.
+    static bool validateDownloadPath(const std::string& path);
+
 private:
     void load();
     DownloadSettings();
     ~DownloadSettings();
 
     friend class Singleton<DownloadSettings>;
-
-        static bool validateDownloadPath(const std::string& path);
-
 };
 
 #endif // Settings

@@ -206,17 +206,6 @@ UploadTask::UploadTask(const std::string& url,const std::string& file,const std:
             m_postParts = *postparts;
 }
 
-UploadTask::UploadTask(const UploadTask& c)
-:   m_ulid(c.m_ulid) ,
-    m_p_curlHandle(c.m_p_curlHandle) ,
-    m_p_curlHeaderList(c.m_p_curlHeaderList) ,
-    m_p_curlFilePartHeaderList(c.m_p_curlFilePartHeaderList) ,
-    m_p_httpPostList(c.m_p_httpPostList) ,
-    m_curlResultCode(c.m_curlResultCode) ,
-    m_httpResultCode(c.m_httpResultCode)
-{
-}
-
 void UploadTask::setHTTPHeaders(std::vector<std::string>& headerList)
 {
     if (m_p_curlHandle == NULL)
