@@ -146,10 +146,15 @@ UploadTask * UploadTask::newBufferUploadTask(const std::string& targeturl,const 
     UploadTask * p_ult = new UploadTask(targeturl,sourcebuffer,"",UploadTask::genNewId(),NULL,contenttype,p_curl);
 
     CURLcode rc = CURLE_OK;
-    if ((rc = curl_easy_setopt (p_ult->m_p_curlHandle, CURLOPT_POSTFIELDS, sourcebuffer.c_str())) != CURLE_OK)
-        LOG_DEBUG("curl set opt: CURLOPT_POSTFIELDS failed [%d]\n", rc);
-    if ((rc = curl_easy_setopt (p_ult->m_p_curlHandle, CURLOPT_POSTFIELDSIZE,sourcebuffer.length())) != CURLE_OK)
-        LOG_DEBUG("curl set opt: CURLOPT_POSTFIELDSIZE failed [%d]\n", rc);
+    // CURLOPT_POSTFIELDS does not copy: libcurl keeps the pointer and reads it
+    // while the transfer runs, long after this caller's std::string has gone
+    // out of scope. Set the size first, then COPYPOSTFIELDS, so libcurl takes
+    // its own copy of exactly sourcebuffer.length() bytes (the buffer may
+    // legitimately contain NULs).
+    if ((rc = curl_easy_setopt (p_ult->m_p_curlHandle, CURLOPT_POSTFIELDSIZE_LARGE,(curl_off_t)sourcebuffer.length())) != CURLE_OK)
+        LOG_DEBUG("curl set opt: CURLOPT_POSTFIELDSIZE_LARGE failed [%d]\n", rc);
+    if ((rc = curl_easy_setopt (p_ult->m_p_curlHandle, CURLOPT_COPYPOSTFIELDS, sourcebuffer.c_str())) != CURLE_OK)
+        LOG_DEBUG("curl set opt: CURLOPT_COPYPOSTFIELDS failed [%d]\n", rc);
     // LOG_DEBUG ("%s: sending postfield %s with postfieldsize %d", __func__, sourcebuffer.c_str(), sourcebuffer.length());
 
     // curl_easy_setopt(p_ult->m_p_curlHandle, CURLOPT_HTTPPOST, (p_ult->m_p_httpPostList));

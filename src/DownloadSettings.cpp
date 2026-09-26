@@ -18,6 +18,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cctype>
 #include <cstring>
 #include <glib.h>
 #include <sys/types.h>
@@ -328,15 +329,27 @@ unsigned long MemStringToBytes( const char* ptr )
     unsigned long r = 0;
     const char* s= ptr;
 
-    while( *ptr && !isalnum(*ptr) ) // skip whitespace
+    if (!ptr)
+        return 0;
+
+    // isalnum()/isdigit() are only defined for unsigned char values and EOF
+    while( *ptr && !isalnum((unsigned char)*ptr) ) // skip whitespace
         ptr++;
     s=ptr;
 
-    while( isdigit(*ptr) )
+    while( isdigit((unsigned char)*ptr) )
         ptr++;
 
-    strncpy( number, s, (size_t)(ptr-s) );
-    number[ptr-s]=0;
+    // A run of 32 or more digits overflowed number[]: strncpy() wrote past the
+    // end of the buffer and number[ptr-s]=0 then stored the terminator further
+    // out still. Such a value cannot fit in an unsigned long anyway, so
+    // truncate the copy to what the buffer holds.
+    size_t digits = (size_t)(ptr - s);
+    if (digits > sizeof(number) - 1)
+        digits = sizeof(number) - 1;
+
+    memcpy( number, s, digits );
+    number[digits]=0;
 
     r = (unsigned long)atol(number);
     switch(*ptr)
