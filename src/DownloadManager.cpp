@@ -1542,8 +1542,13 @@ void DownloadManager::cbGlib()
             //is it a download or an upload
             _task = removeTask(msg->easy_handle);
 
-            if (_task == NULL)
-                break;
+            if (_task == NULL) {
+                // one unknown handle is no reason to stop draining the queue:
+                // breaking here abandoned every remaining CURLMSG_DONE, so
+                // those transfers were never completed, never reported to
+                // subscribers and never freed
+                continue;
+            }
 
             if (_task->type == TransferTask::DOWNLOAD_TASK) {
 
@@ -2204,10 +2209,15 @@ void DownloadManager::cancelFromHistory(DownloadHistoryDb::DownloadHistory& hist
         }
     }
 
-    std::string payload = std::string("{\"ticket\":")+key
-    +(!extractError ? std::string(" , \"url\":\"")+uri+std::string("\"") : std::string(""))
-    +std::string(" , \"aborted\":true")
-    +std::string(" , \"completed\":false }");
+    // uri comes out of the stored history record, so it has to be escaped by
+    // the serializer rather than pasted between quotes
+    pbnjson::JValue payloadJsonObj = pbnjson::Object();
+    payloadJsonObj.put("ticket", (int64_t)history.m_ticket);
+    if (!extractError)
+        payloadJsonObj.put("url", uri);
+    payloadJsonObj.put("aborted", true);
+    payloadJsonObj.put("completed", false);
+    std::string payload = JUtil::toSimpleString(payloadJsonObj);
     if (!postDownloadUpdate (history.m_owner, history.m_ticket, payload)) {
         LOG_WARNING_PAIRS (LOGID_SUBSCRIPTIONREPLY_FAIL_ON_CANCELHISTORY, 2, PMLOGKS("ticket", key.c_str()),
                                                                     PMLOGKS("detail", payload.c_str()),
