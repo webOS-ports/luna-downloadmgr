@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <sstream>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <glib/gstdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -458,7 +459,9 @@ int DownloadManager::download (const std::string& caller,
 
             if ((task->fp) && (range.second != 0) && (range.second > range.first))
             {
-                if (fseek(task->fp, range.first, SEEK_SET) != 0)
+                // fseeko()/off_t rather than fseek()/long: range.first is a
+                // uint64_t and long is 32 bits on armv7
+                if (fseeko(task->fp, (off_t)range.first, SEEK_SET) != 0)
                 {
                     if (fclose(task->fp) != 0) {
                         LOG_DEBUG ("Function fclose() failed");
@@ -742,20 +745,29 @@ int DownloadManager::resumeDownload(const DownloadHistoryDb::DownloadHistory& hi
     }
 
     uint64_t initialOffset = 0;
-    if (!root.hasKey("e_initialOffset"))
+    // DownloadTask::toJSON() writes the 64-bit value under
+    // "e_initialOffsetBytes" (and documents that name in the downloadStatusQuery
+    // subscription payload), but this only ever looked for "e_initialOffset".
+    // The lookup therefore always missed and fell back to the 32-bit
+    // "initialOffset" field, truncating the offset for anything past 4GB.
+    // Accept the old spelling too, in case a history db written by an even
+    // older build is still around.
+    if (root.hasKey("e_initialOffsetBytes"))
     {
-        if (!root.hasKey("initialOffset")) {
-            r_err = " initialOffset not found in the history record";
-            return DOWNLOADMANAGER_RESUMESTATUS_HISTORYCORRUPT;
-        }
-        else
-        {
-            initialOffset = root["initialOffset"].asNumber<int64_t>();
-        }
+        initialOffset = strtouq((root["e_initialOffsetBytes"].asString()).c_str(),0,10);
+    }
+    else if (root.hasKey("e_initialOffset"))
+    {
+        initialOffset = strtouq((root["e_initialOffset"].asString()).c_str(),0,10);
+    }
+    else if (root.hasKey("initialOffset"))
+    {
+        initialOffset = root["initialOffset"].asNumber<int64_t>();
     }
     else
     {
-        initialOffset = strtouq((root["e_initialOffset"].asString()).c_str(),0,10);
+        r_err = " initialOffset not found in the history record";
+        return DOWNLOADMANAGER_RESUMESTATUS_HISTORYCORRUPT;
     }
 
     std::string uri = "";
@@ -878,9 +890,15 @@ int DownloadManager::resumeDownload(const DownloadHistoryDb::DownloadHistory& hi
 
     //seek to the correct place
     //LOG_DEBUG ("%s: file ptr is currently at %lu; moving file ptr to %u...",__FUNCTION__,ftell(fp),completedSize);
-    if (fseek(fp,completedSize-initialOffset,SEEK_SET) != 0)
+    // completedSize is reset to 0 above when the partial file has gone missing,
+    // in which case completedSize - initialOffset wraps around on unsigned
+    // arithmetic and turns a restart-from-scratch into a seek failure. Clamp.
+    // fseek() takes long, which is 32 bits on armv7, so use fseeko()/off_t:
+    // _FILE_OFFSET_BITS=64 makes that a 64-bit offset on every target.
+    off_t resumeAt = (off_t)((completedSize > initialOffset) ? (completedSize - initialOffset) : 0);
+    if (fseeko(fp,resumeAt,SEEK_SET) != 0)
     {
-        LOG_WARNING_PAIRS (LOGID_RESUME_FSEEK_FAIL, 1, PMLOGKFV("ptr", "%lu", ftell(fp)), "moving file ptr failed");
+        LOG_WARNING_PAIRS (LOGID_RESUME_FSEEK_FAIL, 1, PMLOGKFV("ptr", "%jd", (intmax_t)ftello(fp)), "moving file ptr failed");
         if (fclose(fp) != 0) {
             LOG_DEBUG ("Function fclose() failed");
         }
