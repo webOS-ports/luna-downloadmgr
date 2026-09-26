@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <sstream>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <glib/gstdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -1081,7 +1082,7 @@ void DownloadManager::filesystemStatusCheck(const uint64_t& freeSpaceKB,const ui
         pctFull = 100 - (uint32_t)(0.5 + ((double)freeSpaceKB / (double)totalSpaceKB) * (double)100.0);
         pctFull = (pctFull <= 100 ? pctFull : 100);
     }
-    LOG_DEBUG ("%s: Percent Full = %u (from free space KB = %lu , total space KB = %lu",__FUNCTION__,pctFull,freeSpaceKB,totalSpaceKB);
+    LOG_DEBUG ("%s: Percent Full = %u (from free space KB = %" PRIu64 " , total space KB = %" PRIu64 ")",__FUNCTION__,pctFull,freeSpaceKB,totalSpaceKB);
 
     if (pctFullValue)
         *pctFullValue = pctFull;
