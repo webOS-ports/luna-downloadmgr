@@ -2125,11 +2125,15 @@ bool DownloadManager::cancel( unsigned long ticket )
     jsonPayloadObj.put("interrupted", false);
 
     std::string payload = JUtil::toSimpleString(jsonPayloadObj);
+    // Failing to notify subscribers used to return here, but removeTask() at
+    // the top of this function has already taken the task out of both maps:
+    // bailing out leaked the TransferTask, left the partial file on disk and
+    // never wrote the "cancelled" history record, so the ticket became
+    // unreachable and uncancellable. Log and carry on with the teardown.
     if (!postDownloadUpdate (task->ownerId, task->ticket, payload)) {
         LOG_WARNING_PAIRS (LOGID_SUBSCRIPTIONREPLY_FAIL_ON_CANCEL, 2, PMLOGKS("ticket", key.c_str()),
                                                                     PMLOGKS("detail", payload.c_str()),
                                                                     "failed to update cancellation status to subscribers");
-        return false;
     }
 
     // remove file if the download has been cancelled.
@@ -2680,6 +2684,16 @@ void DownloadManager::startupGlibCurl()
     glibcurl_init();
     glibcurl_set_callback(&cbGlibcurl,this);
 
+    // shutdownGlibCurl()/startupGlibCurl() are cycled every time the queue
+    // drains (see cbIdleSourceGlibcurlCleanup), so a fresh share handle here
+    // without releasing the previous one leaked one per cycle.
+    if (s_curlShareHandle) {
+        CURLSHcode shrc = curl_share_cleanup(s_curlShareHandle);
+        if (shrc != CURLSHE_OK) {
+            LOG_DEBUG ("Function curl_share_cleanup() failed [%d]", shrc);
+        }
+        s_curlShareHandle = 0;
+    }
     s_curlShareHandle = curl_share_init();
     if (curl_share_setopt(s_curlShareHandle, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS) != 0) {
         LOG_DEBUG ("Function curl_share_setopt() failed");
@@ -2717,6 +2731,16 @@ void DownloadManager::shutdownGlibCurl()
     m_activeTaskCount = 0;
 
     m_glibCurlInitialized = false;
+
+    // before glibcurl_cleanup(), which calls curl_global_cleanup()
+    if (s_curlShareHandle) {
+        CURLSHcode shrc = curl_share_cleanup(s_curlShareHandle);
+        if (shrc != CURLSHE_OK) {
+            LOG_DEBUG ("Function curl_share_cleanup() failed [%d]", shrc);
+        }
+        s_curlShareHandle = 0;
+    }
+
     glibcurl_cleanup();
 
     return;
