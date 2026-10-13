@@ -525,6 +525,21 @@ int DownloadManager::download (const std::string& caller,
     if ((curlSetOptRc = curl_easy_setopt(curlHandle, CURLOPT_URL,task->url.c_str())) != CURLE_OK )
         LOG_DEBUG ("curl set opt: CURLOPT_URL failed [%d]\n",curlSetOptRc);
 
+    // Say who we are. libcurl sends NO User-Agent header unless one is set, and
+    // a request without one is enough for some servers to refuse the transfer:
+    // ipv4.download.thinkbroadband.com answers 403 to it while serving the same
+    // file to curl(1), which does send one. Reported as "5MB zip fails" in the
+    // browser, where the download manager fetched it; the browser itself could
+    // open the same url. Identify as the libcurl we are rather than impersonate
+    // a browser - a half-right browser token is its own source of trouble, as
+    // the "Web0S; Linux" agent was for the web engine.
+    const curl_version_info_data* curlVersion = curl_version_info(CURLVERSION_NOW);
+    const std::string userAgent =
+        std::string("curl/") +
+        ((curlVersion && curlVersion->version) ? curlVersion->version : "8");
+    if ((curlSetOptRc = curl_easy_setopt(curlHandle, CURLOPT_USERAGENT, userAgent.c_str())) != CURLE_OK )
+        LOG_DEBUG ("curl set opt: CURLOPT_USERAGENT failed [%d]\n",curlSetOptRc);
+
     if ( !(task->cookieHeader.empty()) &&
         (curlSetOptRc = curl_easy_setopt(curlHandle, CURLOPT_COOKIE,task->cookieHeader.c_str())) != CURLE_OK) {
             LOG_DEBUG ("curl set opt: CURLOPT_COOKIE failed [%d]\n",curlSetOptRc);
