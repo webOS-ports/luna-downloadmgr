@@ -220,7 +220,7 @@ public:
     bool is1xDownloadAllowed();
     bool canDownloadNow();
     static bool cbConnectionType(LSHandle* lshandle, LSMessage *message,void *user_data);
-    static gboolean     cbIdleSourceGlibcurlCleanup (gpointer userData);
+    static gboolean     cbIdleSourceTransfersDrained (gpointer userData);
     // msm
 
     static bool msmAvailCallback(LSHandle* handle, LSMessage* message, void* ctxt);

@@ -2068,7 +2068,7 @@ void DownloadManager::completed_dl(DownloadTask* task)
         }
     }
     else if (m_queue.empty() && m_activeTaskCount == 0) {
-        if (g_idle_add (DownloadManager::cbIdleSourceGlibcurlCleanup, this) == 0) {
+        if (g_idle_add (DownloadManager::cbIdleSourceTransfersDrained, this) == 0) {
             LOG_DEBUG ("Function g_idle_add() failed");
         }
     }
@@ -2091,13 +2091,36 @@ void DownloadManager::completed_ul(UploadTask* task)
     m_uploadTaskMap.erase(task->id());
 }
 
-gboolean DownloadManager::cbIdleSourceGlibcurlCleanup (gpointer data)
+gboolean DownloadManager::cbIdleSourceTransfersDrained (gpointer data)
 {
     DownloadManager* dlm = (DownloadManager*) data;
     if (dlm->m_queue.empty() && dlm->m_activeTaskCount == 0) {
-        LOG_DEBUG ("%s: Restarting glibcurl for cleanup", __PRETTY_FUNCTION__);
-        dlm->shutdownGlibCurl();
-        dlm->startupGlibCurl();
+        /* This used to destroy and recreate the whole curl multi handle here -
+         * shutdownGlibCurl() immediately followed by startupGlibCurl() - every
+         * time the transfer list drained. No other libcurl consumer on the
+         * system does that, and against a modern libcurl it crashes: the next
+         * curl_multi_remove_handle dereferences a stale multi->msglist.head,
+         * reached from glibcurl_remove <- removeTask_dl.
+         *
+         * codepoet80 measured it on webOS CE 3.1.0 (curl 7.61.1) with the same
+         * storm of fast-failing downloads, one variable changed:
+         *
+         *   list allowed to drain   58 restarts   28 crashes / 60 iterations
+         *   one download held open   0 restarts    0 crashes / 30 iterations
+         *
+         * and 0 crashes / 60 with the restart disabled, at unchanged
+         * throughput, RSS (7092 -> 6940 kB) and fd count (27 -> 27) over 40
+         * further transfer cycles - so the "cleanup" was reclaiming nothing.
+         * It was almost certainly a workaround for a curl 7.21.7-era leak that
+         * no longer exists. He shipped it as a binary patch for the legacy
+         * webOS daemon (OpenSSL-legacyWebOS, downloadmgr-tls13 1.1.0); this is
+         * the same fix in the source the modern system builds, where libcurl is
+         * newer still.
+         *
+         * The multi handle now lives for the lifetime of the process, which is
+         * what every other consumer does; shutdownGlibCurl() remains for
+         * ~DownloadManager(). Releasing the wake lock is the part of this idle
+         * source that was always worth doing, so it stays. */
         dlm->requestWakeLock(false);
     }
     return false;
@@ -2709,9 +2732,11 @@ void DownloadManager::startupGlibCurl()
     glibcurl_init();
     glibcurl_set_callback(&cbGlibcurl,this);
 
-    // shutdownGlibCurl()/startupGlibCurl() are cycled every time the queue
-    // drains (see cbIdleSourceGlibcurlCleanup), so a fresh share handle here
-    // without releasing the previous one leaked one per cycle.
+    // Only reached once per process now that the queue draining no longer
+    // cycles shutdownGlibCurl()/startupGlibCurl() (see
+    // cbIdleSourceTransfersDrained), but releasing any previous handle is kept:
+    // it is what stopped this leaking one share handle per cycle when it did,
+    // and ~DownloadManager() can still be followed by a restart in tests.
     if (s_curlShareHandle) {
         CURLSHcode shrc = curl_share_cleanup(s_curlShareHandle);
         if (shrc != CURLSHE_OK) {
