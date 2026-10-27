@@ -1,0 +1,6 @@
+{
+    "allowedNames" : ["com.webos.service.downloadmanager"],
+    "networking.internal": ["oem"],
+    "download.operation": ["dev"],
+    "download.management": ["oem"]
+}
