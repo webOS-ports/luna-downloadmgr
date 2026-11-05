@@ -182,7 +182,7 @@ public:
 
     bool    currentlyInBrickMode() { return m_brickMode; }
 
-    bool postDownloadUpdate (const std::string& owner, const unsigned long ticket, const std::string& payload);
+    bool postDownloadUpdate (const std::string& owner, const unsigned long ticket, const pbnjson::JValue& payload);
 
     friend class UploadTask;
 

@@ -89,6 +89,13 @@ ctest --test-dir build --output-on-failure
   gets no empty `Content-Type` header. Also that a buffer upload's body survives
   its source `std::string` going out of scope.
 
+- `test_updates` — the messages a download or upload subscriber gets after
+  the first reply: that each goes out with `returnValue: true` (a caller that
+  goes by returnValue took the first progress message as a failure), that
+  the object the history db stores is left without it, and that the progress
+  messages, built with pbnjson now, carry exactly what the hand-pasted
+  strings did, 32-bit `amount*` fields included.
+
 `tests/unit/test_support.cpp` supplies `gMainLoop`, which the daemon defines in
 `Main.cpp`. The tests link `LunaDownloadMgrCore`, which is every source *except*
 `Main.cpp`, so there is exactly one `main()` in the binary.

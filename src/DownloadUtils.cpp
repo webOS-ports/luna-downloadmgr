@@ -189,6 +189,39 @@ std::string getHtml5DatabaseFolderNameForApp(const std::string& appId,std::strin
     return r;
 }
 
+pbnjson::JValue downloadProgressJSON(unsigned long ticket, uint64_t received, uint64_t total)
+{
+    pbnjson::JValue j = pbnjson::Object();
+    j.put("ticket", static_cast<int64_t>(ticket));
+    j.put("amountReceived", static_cast<int64_t>(static_cast<uint32_t>(received)));
+    j.put("e_amountReceived", ConvertToString<uint64_t>(received));
+    j.put("amountTotal", static_cast<int64_t>(static_cast<uint32_t>(total)));
+    j.put("e_amountTotal", ConvertToString<uint64_t>(total));
+    return j;
+}
+
+pbnjson::JValue uploadProgressJSON(unsigned long ticket, uint64_t sent, uint64_t total)
+{
+    // The upload's counts went out as int32_t, the download's as uint32_t; each is kept as it was.
+    pbnjson::JValue j = pbnjson::Object();
+    j.put("ticket", static_cast<int64_t>(ticket));
+    j.put("amountSent", static_cast<int64_t>(static_cast<int32_t>(static_cast<uint32_t>(sent))));
+    j.put("e_amountSent", ConvertToString<uint64_t>(sent));
+    j.put("amountTotal", static_cast<int64_t>(static_cast<int32_t>(static_cast<uint32_t>(total))));
+    j.put("e_amountTotal", ConvertToString<uint64_t>(total));
+    return j;
+}
+
+pbnjson::JValue subscriptionUpdate(const pbnjson::JValue& payload)
+{
+    // A copy: the callers go on to store the same object in the history db, which has never had
+    // returnValue in its rows.
+    pbnjson::JValue j = payload.duplicate();
+    if (j.isObject() && !j.hasKey("returnValue"))
+        j.put("returnValue", true);
+    return j;
+}
+
 int postSubscriptionUpdate(const std::string& key,const std::string& postMessage,LSHandle * serviceHandle)
 {
     if (serviceHandle == NULL)

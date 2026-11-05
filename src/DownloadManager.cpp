@@ -1224,7 +1224,6 @@ int DownloadManager::pauseDownload(const unsigned long ticket,bool allowQueuedTo
     LSErrorInit(&lserror);
 
     pbnjson::JValue payloadJsonObj = task->toJSON();
-    std::string payload;
 
     payloadJsonObj.put("completionStatusCode", DOWNLOADMANAGER_COMPLETIONSTATUS_INTERRUPTED);
 
@@ -1234,10 +1233,8 @@ int DownloadManager::pauseDownload(const unsigned long ticket,bool allowQueuedTo
     payloadJsonObj.put("aborted", false);
     payloadJsonObj.put("target", dest);
 
-    payload = JUtil::toSimpleString(payloadJsonObj);
-
     if (!(DownloadSettings::instance().appCompatibilityMode)) {
-        if (!postDownloadUpdate(task->ownerId, ticket,payload)) {
+        if (!postDownloadUpdate(task->ownerId, ticket,payloadJsonObj)) {
             LOG_WARNING_PAIRS (LOGID_SUBSCRIPTIONREPLY_FAIL_ON_PAUSE, 1, PMLOGKFV("ticket", "%lu", ticket), "failed to update pause status to subscribers");
         }
     }
@@ -1652,26 +1649,13 @@ size_t DownloadManager::cbWriteEvent (CURL * taskHandle,size_t payloadSize,unsig
         LSError lserror;
         LSErrorInit(&lserror);
         std::string key = ConvertToString<unsigned long>(task->ticket);
-        std::string bytesCompletedStr = ConvertToString<uint32_t>((uint32_t)(task->bytesCompleted));
-        std::string e_bytesCompletedStr = ConvertToString<uint64_t>(task->bytesCompleted);
-        std::string bytesTotalStr = ConvertToString<uint32_t>((uint32_t)(task->bytesTotal));
-        std::string e_bytesTotalStr = ConvertToString<uint64_t>(task->bytesTotal);
-        std::string response = std::string("{ \"ticket\":")
-            +key
-            +std::string(" , \"amountReceived\":")
-            +bytesCompletedStr
-            +std::string(" , \"e_amountReceived\":\"")
-            +e_bytesCompletedStr + std::string("\"")
-            +std::string(" , \"amountTotal\":")
-            +bytesTotalStr
-            +std::string(" , \"e_amountTotal\":\"")
-            +e_bytesTotalStr + std::string("\"")
-            +std::string(" }");
+        pbnjson::JValue progress = downloadProgressJSON(task->ticket, task->bytesCompleted, task->bytesTotal);
+        std::string response = JUtil::toSimpleString(progress);
 
         if (fdatasync(fileno(task->fp)) != 0) {
             LOG_DEBUG ("Function fdatasync() failed");
         }
-        if (!postDownloadUpdate (task->ownerId, task->ticket, response)) {
+        if (!postDownloadUpdate (task->ownerId, task->ticket, progress)) {
             LOG_WARNING_PAIRS (LOGID_SUBSCRIPTIONREPLY_FAIL_ON_WRITEDATA, 2, PMLOGKS("ticket", key.c_str()),
                                                                             PMLOGKS("detail", response.c_str()),
                                                                             "failed to update write-progress to subscribers");
@@ -1746,19 +1730,10 @@ size_t DownloadManager::cbReadEvent(CURL* taskHandle,size_t payloadSize,unsigned
         LSErrorInit(&lserror);
 
         std::string key = ConvertToString<long>(task->ticket);
-        std::string bytesCompletedStr = ConvertToString<int32_t>(task->bytesCompleted);
-        std::string bytesTotalStr = ConvertToString<int32_t>(task->bytesTotal);
-        std::string e_bytesCompletedStr = ConvertToString<uint64_t>(task->bytesCompleted);
-        std::string e_bytesTotalStr = ConvertToString<uint64_t>(task->bytesTotal);
-        std::string response =
-                std::string("{ \"ticket\":") +key
-                +std::string(" , \"amountSent\":") +bytesCompletedStr
-                +std::string(" , \"e_amountSent\":\"")+e_bytesCompletedStr + std::string("\"")
-                +std::string(" , \"amountTotal\":") +bytesTotalStr
-                +std::string(" , \"e_amountTotal\":\"")+e_bytesTotalStr + std::string("\"")
-                +std::string(" }");
+        pbnjson::JValue progress = uploadProgressJSON(task->ticket, task->bytesCompleted, task->bytesTotal);
+        std::string response = JUtil::toSimpleString(progress);
 
-        if (!postDownloadUpdate (task->ownerId, task->ticket, response)) {
+        if (!postDownloadUpdate (task->ownerId, task->ticket, progress)) {
             LOG_WARNING_PAIRS (LOGID_SUBSCRIPTIONREPLY_FAIL_ON_READDATA, 2, PMLOGKS("ticket", key.c_str()),
                                                                             PMLOGKS("detail", response.c_str()),
                                                                             "failed to update read-progress to subscribers");
@@ -2039,7 +2014,7 @@ void DownloadManager::completed_dl(DownloadTask* task)
         m_pDlDb->addHistory(task->ticket,task->ownerId,task->connectionName,"completed",historyString);
 
 
-    if (!postDownloadUpdate (task->ownerId, task->ticket, payload)) {
+    if (!postDownloadUpdate (task->ownerId, task->ticket, payloadJsonObj)) {
         LOG_WARNING_PAIRS (LOGID_SUBSCRIPTIONREPLY_FAIL_ON_COMPLETION, 2, PMLOGKS("ticket", key.c_str()),
                                                                         PMLOGKS("detail", payload.c_str()),
                                                                         "failed to update download completion info to subscribers");
@@ -2173,7 +2148,7 @@ bool DownloadManager::cancel( unsigned long ticket )
     // bailing out leaked the TransferTask, left the partial file on disk and
     // never wrote the "cancelled" history record, so the ticket became
     // unreachable and uncancellable. Log and carry on with the teardown.
-    if (!postDownloadUpdate (task->ownerId, task->ticket, payload)) {
+    if (!postDownloadUpdate (task->ownerId, task->ticket, jsonPayloadObj)) {
         LOG_WARNING_PAIRS (LOGID_SUBSCRIPTIONREPLY_FAIL_ON_CANCEL, 2, PMLOGKS("ticket", key.c_str()),
                                                                     PMLOGKS("detail", payload.c_str()),
                                                                     "failed to update cancellation status to subscribers");
@@ -2256,7 +2231,7 @@ void DownloadManager::cancelFromHistory(DownloadHistoryDb::DownloadHistory& hist
     payloadJsonObj.put("aborted", true);
     payloadJsonObj.put("completed", false);
     std::string payload = JUtil::toSimpleString(payloadJsonObj);
-    if (!postDownloadUpdate (history.m_owner, history.m_ticket, payload)) {
+    if (!postDownloadUpdate (history.m_owner, history.m_ticket, payloadJsonObj)) {
         LOG_WARNING_PAIRS (LOGID_SUBSCRIPTIONREPLY_FAIL_ON_CANCELHISTORY, 2, PMLOGKS("ticket", key.c_str()),
                                                                     PMLOGKS("detail", payload.c_str()),
                                                                     "failed to update cancellation status to subscribers");
@@ -3144,13 +3119,13 @@ bool DownloadManager::msmFscking(LSMessage* message)
     return true;
 }
 
-bool DownloadManager::postDownloadUpdate (const std::string& owner, const unsigned long ticket, const std::string& payload)
+bool DownloadManager::postDownloadUpdate (const std::string& owner, const unsigned long ticket, const pbnjson::JValue& payload)
 {
     LSError lserror;
     LSErrorInit(&lserror);
 
     std::string key = ConvertToString<long>(ticket);
-    if (postSubscriptionUpdate(key,payload,m_serviceHandle) != 0) {
+    if (postSubscriptionUpdate(key,JUtil::toSimpleString(subscriptionUpdate(payload)),m_serviceHandle) != 0) {
         LSErrorPrint (&lserror, stderr);
         LSErrorFree(&lserror);
     }

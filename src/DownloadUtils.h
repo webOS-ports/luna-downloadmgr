@@ -24,6 +24,7 @@
 #include <iostream>
 #include <vector>
 #include <luna-service2/lunaservice.h>
+#include <pbnjson.hpp>
 
 template <class T> std::string ConvertToString(const T &arg) {
     std::ostringstream      out;
@@ -39,6 +40,15 @@ int splitStringOnKey(std::vector<std::string>& returnSplitSubstrings,const std::
 bool isNonErrorProcExit(int ecode,int normalCode=0);
 
 std::string getHtml5DatabaseFolderNameForApp(const std::string& appId,std::string appFolderPath);
+
+// What a download or upload subscriber is sent while the transfer runs. amountReceived/amountSent and
+// amountTotal keep their old 32-bit values, for the callers that read those; e_amountReceived,
+// e_amountSent and e_amountTotal carry the full 64-bit counts, as strings.
+pbnjson::JValue downloadProgressJSON(unsigned long ticket, uint64_t received, uint64_t total);
+pbnjson::JValue uploadProgressJSON(unsigned long ticket, uint64_t sent, uint64_t total);
+// A copy of a subscription message with "returnValue": true added, unless it has one: every reply on
+// the bus carries returnValue, and a caller that goes by it took a message without one as a failure.
+pbnjson::JValue subscriptionUpdate(const pbnjson::JValue& payload);
 
 #define ERRMASK_POSTSUBUPDATE    1
 int postSubscriptionUpdate(const std::string& key,const std::string& postMessage,LSHandle * serviceHandle);

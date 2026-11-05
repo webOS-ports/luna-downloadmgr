@@ -23,7 +23,8 @@ set(UNIT_TESTS
     test_taskjson
     test_fsstatus
     test_jutil
-    test_upload)
+    test_upload
+    test_updates)
 
 foreach(t ${UNIT_TESTS})
     add_executable(${t} ${t}.cpp test_support.cpp)
