@@ -278,8 +278,8 @@ int DownloadManager::download (const std::string& caller,
 
     if (interface == ANY) {
         //determine a good interface to use
-    if (m_wiredConnectionStatus == DownloadManager::InetConnectionConnected)
-        interface = Wired;
+        if (m_wiredConnectionStatus == DownloadManager::InetConnectionConnected)
+            interface = Wired;
         else if (m_wifiConnectionStatus == DownloadManager::InetConnectionConnected)
             interface = Wifi;
         else if (m_wanConnectionStatus == DownloadManager::InetConnectionConnected)

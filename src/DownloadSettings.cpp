@@ -116,28 +116,28 @@ DownloadSettings::~DownloadSettings()
 
 #define KEY_STRING(cat,name,var) \
 {\
-    gchar* _vs;\
+    gchar* _vs = NULL;\
     GError* _error = 0;\
     _vs=g_key_file_get_string(keyfile,cat,name,&_error);\
-    if( !_error && _vs ) { var=(const char*)_vs; g_free(_vs); }\
-    else g_error_free(_error); \
+    if( !_error && _vs ) { (var)=(const char*)_vs; g_free(_vs); }\
+    else if (_error) g_error_free(_error); \
 }
 
 #define KEY_MEMORY_STRING(cat,name,var) \
 {\
-    gchar* _vs;\
+    gchar* _vs = NULL;\
     GError* _error = 0;\
     _vs=g_key_file_get_string(keyfile,cat,name,&_error);\
-    if( !_error && _vs ) { var=::MemStringToBytes((const char*)_vs); g_free(_vs); }\
-    else g_error_free(_error); \
+    if( !_error && _vs ) { (var)=::MemStringToBytes((const char*)_vs); g_free(_vs); }\
+    else if (_error) g_error_free(_error); \
 }
 
 #define KEY_BOOLEAN(cat,name,var) \
 {\
-    gboolean _vb;\
+    gboolean _vb = FALSE;\
     GError* _error = 0;\
     _vb=g_key_file_get_boolean(keyfile,cat,name,&_error);\
-    if( !_error ) { var=_vb; }\
+    if( !_error ) { (var)=_vb; }\
     else g_error_free(_error); \
 }
 
@@ -146,7 +146,7 @@ DownloadSettings::~DownloadSettings()
     int _v = 0;\
     GError* _error = 0;\
     _v=g_key_file_get_integer(keyfile,cat,name,&_error);\
-    if( !_error ) { var=_v; }\
+    if( !_error ) { (var)=_v; }\
     else g_error_free(_error); \
 }
 
@@ -159,20 +159,20 @@ DownloadSettings::~DownloadSettings()
         _v = g_ascii_strtoull(tmp_str, NULL, 10); \
         g_free (tmp_str); \
     } \
-    if(! _error ) { var=_v; }\
+    if(! _error ) { (var)=_v; }\
     else g_error_free(_error); \
 }
 
 #define KEY_UINT32(cat,name,var) \
 { \
-    uint32_t _v;\
+    uint32_t _v = 0;\
     GError* _error = 0;\
     char * tmp_str = g_key_file_get_value(keyfile,cat,name,&_error); \
     if (tmp_str) { \
         _v = g_ascii_strtoul(tmp_str, NULL, 10); \
         g_free (tmp_str); \
     } \
-    if(! _error ) { var=_v; }\
+    if(! _error ) { (var)=_v; }\
     else g_error_free(_error); \
 }
 

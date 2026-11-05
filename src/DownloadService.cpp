@@ -26,6 +26,7 @@
 #include "DownloadUtils.h"
 #include "DownloadSettings.h"
 
+#include <cmath>
 #include <vector>
 #include <iostream>
 #include <cstring>
@@ -142,7 +143,9 @@ Done:
     if (!result) {
         LOG_DEBUG ("Failed in %s: %s - restarting",__FUNCTION__, lsError.message);
         LSErrorFree(&lsError);
-        exit(0);
+        // startService() runs from init(), before the main loop and so before glibcurl's select
+        // thread exists: exit() has no other thread to race.
+        exit(0);  // NOLINT(concurrency-mt-unsafe)
     }
     else {
         LOG_DEBUG("DownloadManager on service bus");
@@ -566,6 +569,8 @@ bool DownloadManager::cbPauseDownload(LSHandle* lshandle, LSMessage *message,voi
     case DOWNLOADMANAGER_PAUSESTATUS_NOSUCHDOWNLOADTASK:
         errorCode = ConvertToString<int>(rc);
         errorText = "Ticket provided does not correspond to a downloading transfer";
+        break;
+    default:
         break;
     }
 
@@ -1048,6 +1053,8 @@ bool DownloadManager::cbClearDownloadHistory(LSHandle * lshandle,LSMessage *msg,
         case DOWNLOADHISTORYDB_HISTORYSTATUS_NOTINHISTORY:
             errorText = std::string("Fail to find owner");
             break;
+        default:
+            break;
     }
 
 Done:
@@ -1087,7 +1094,7 @@ void DownloadManager::filesystemStatusCheck(const uint64_t& freeSpaceKB,const ui
     }
     else
     {
-        pctFull = 100 - (uint32_t)(0.5 + ((double)freeSpaceKB / (double)totalSpaceKB) * (double)100.0);
+        pctFull = 100 - static_cast<uint32_t>(std::lround(static_cast<double>(freeSpaceKB) / static_cast<double>(totalSpaceKB) * 100.0));
         pctFull = (pctFull <= 100 ? pctFull : 100);
     }
     LOG_DEBUG ("%s: Percent Full = %u (from free space KB = %" PRIu64 " , total space KB = %" PRIu64 ")",__FUNCTION__,pctFull,freeSpaceKB,totalSpaceKB);
