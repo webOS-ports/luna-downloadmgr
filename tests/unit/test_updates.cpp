@@ -143,3 +143,12 @@ TEST(SubscriptionKey, IsTheTicketInDecimal)
     EXPECT_EQ(subscriptionKey(ULONG_MAX), std::to_string(ULONG_MAX));
     EXPECT_EQ(subscriptionKey(42), ConvertToString<unsigned long>(42ul));
 }
+
+// Without a bus handle there is no one to tell: that is not a failure. It used to return true (1),
+// which is the "a reply could not be sent" bit, so every update looked failed.
+TEST(SubscriptionUpdate, NoBusHandleIsNothingToDo)
+{
+    EXPECT_EQ(postSubscriptionUpdate(subscriptionKey(1), "{\"returnValue\":true}", NULL), 0);
+    EXPECT_EQ(removeSubscriptions(subscriptionKey(1), NULL), 0u);
+    EXPECT_EQ(removeSubscriptions("", NULL), 0u);
+}

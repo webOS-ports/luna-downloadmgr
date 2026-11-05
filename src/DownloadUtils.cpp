@@ -251,37 +251,28 @@ pbnjson::JValue subscriptionUpdate(const pbnjson::JValue& payload)
 int postSubscriptionUpdate(const std::string& key,const std::string& postMessage,LSHandle * serviceHandle)
 {
     if (serviceHandle == NULL)
-        return true;            //nothing to do
+        return 0;               //nothing to do, no one to tell
 
     LSSubscriptionIter *iter=NULL;
     LSError lserror;
     LSErrorInit(&lserror);
-    bool retVal = false;
-    //acquire the subscription and reply.
-
-//  LOG_DEBUG ("DL-UPDATE: %s",postMessage.c_str());
     int rc=0;
 
-    if (serviceHandle) {
-        retVal = LSSubscriptionAcquire(serviceHandle, key.c_str(), &iter, &lserror);
-        if (retVal) {
-        while (LSSubscriptionHasNext(iter)) {
-            LSMessage *message = LSSubscriptionNext(iter);
-            if (!LSMessageReply(serviceHandle,message,postMessage.c_str(),&lserror)) {
+    //acquire the subscription and reply.
+    if (!LSSubscriptionAcquire(serviceHandle, key.c_str(), &iter, &lserror)) {
+        LSErrorFree(&lserror);
+        return 0;
+    }
+    while (LSSubscriptionHasNext(iter)) {
+        LSMessage *message = LSSubscriptionNext(iter);
+        if (!LSMessageReply(serviceHandle,message,postMessage.c_str(),&lserror)) {
             LSErrorPrint(&lserror,stderr);
             LSErrorFree(&lserror);
             //mark the return code bitfield to indicate at least one bus failure
             rc |= ERRMASK_POSTSUBUPDATE;
-            }
-        }
-
-        LSSubscriptionRelease(iter);
-        }
-        else {
-        LSErrorFree(&lserror);
         }
     }
-
+    LSSubscriptionRelease(iter);
     return rc;
 }
 
@@ -319,26 +310,19 @@ uint32_t removeSubscriptions(const std::string& key,LSHandle * serviceHandle)
     LSErrorInit(&lserror);
 
     //acquire the subscription
-    uint32_t rc=0;
-    bool retVal = false;
-
-    if (serviceHandle) {
-        retVal = LSSubscriptionAcquire(serviceHandle, key.c_str(), &iter, &lserror);
-        if (retVal) {
-            while (LSSubscriptionHasNext(iter)) {
-                if (!LSSubscriptionNext(iter)) {
-                    break;
-                }
-                LSSubscriptionRemove(iter);
-                    ++rc;
-            }
-            LSSubscriptionRelease(iter);
-        }
-        else {
-            LSErrorFree(&lserror);
-        }
+    if (!LSSubscriptionAcquire(serviceHandle, key.c_str(), &iter, &lserror)) {
+        LSErrorFree(&lserror);
+        return 0;
     }
-
+    uint32_t rc=0;
+    while (LSSubscriptionHasNext(iter)) {
+        if (!LSSubscriptionNext(iter)) {
+            break;
+        }
+        LSSubscriptionRemove(iter);
+        ++rc;
+    }
+    LSSubscriptionRelease(iter);
     return rc;
 }
 

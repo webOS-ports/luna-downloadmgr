@@ -3117,15 +3117,8 @@ bool DownloadManager::msmFscking(LSMessage* message)
 
 bool DownloadManager::postDownloadUpdate (const std::string& owner, const unsigned long ticket, const pbnjson::JValue& payload)
 {
-    LSError lserror;
-    LSErrorInit(&lserror);
-
-    std::string key = ConvertToString<long>(ticket);
-    if (postSubscriptionUpdate(key,JUtil::toSimpleString(subscriptionUpdate(payload)),m_serviceHandle) != 0) {
-        LSErrorPrint (&lserror, stderr);
-        LSErrorFree(&lserror);
-    }
-    return true;
+    // false when a subscriber could not be sent the update; postSubscriptionUpdate has logged why
+    return postSubscriptionUpdate(subscriptionKey(ticket),JUtil::toSimpleString(subscriptionUpdate(payload)),m_serviceHandle) == 0;
 }
 
 bool DownloadManager::diskSpaceAtStopMarkLevel()
