@@ -135,8 +135,8 @@ void DownloadManager::init()
 #else
     // g_get_home_dir() is never NULL; getenv("HOME") is when HOME is not set, and a std::string
     // made from NULL crashed the daemon.
-    m_downloadPath = std::string(g_get_home_dir())+std::string("/downloads/");
-    m_userDiskRootPath = std::string(g_get_home_dir())+std::string("/downloads/");
+    m_downloadPath = std::string(g_get_home_dir())+std::string("/downloads/");  // flawfinder: ignore - copied into a std::string, no fixed buffer
+    m_userDiskRootPath = std::string(g_get_home_dir())+std::string("/downloads/");  // flawfinder: ignore - copied into a std::string, no fixed buffer
 #endif
 
     unsigned long maxKey = 0;
@@ -215,7 +215,7 @@ bool DownloadManager::isPathInMedia(const std::string& path) {
 #if !defined (TARGET_DESKTOP)
     if (path.find("/media/internal") == 0 )
 #else
-    if (path.find (g_get_home_dir()) == 0)
+    if (path.find (g_get_home_dir()) == 0)  // flawfinder: ignore - only compared, no fixed buffer
 #endif
         return true;
 

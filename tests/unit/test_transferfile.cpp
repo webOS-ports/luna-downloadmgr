@@ -38,10 +38,10 @@ struct Dir {
 
 std::string contents(const std::string& p)
 {
-    FILE* f = fopen(p.c_str(), "rb");
+    FILE* f = fopen(p.c_str(), "rb");  // flawfinder: ignore - reads back the test's own file
     if (!f)
         return "<none>";
-    char buf[64] = {0};
+    char buf[64] = {0};  // flawfinder: ignore - fread() is bounded by sizeof(buf) - 1
     size_t n = fread(buf, 1, sizeof(buf) - 1, f);
     fclose(f);
     return std::string(buf, n);
@@ -49,7 +49,7 @@ std::string contents(const std::string& p)
 
 void write(const std::string& p, const char* text)
 {
-    FILE* f = fopen(p.c_str(), "wb");
+    FILE* f = fopen(p.c_str(), "wb");  // flawfinder: ignore - writes the test's own file
     ASSERT_NE(static_cast<FILE*>(NULL), f);
     fputs(text, f);
     fclose(f);

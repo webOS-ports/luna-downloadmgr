@@ -58,7 +58,7 @@ FILE* openTransferFile(const std::string& path, const char* mode)
         return NULL;
     }
     // 0666 as fopen() gives, less the umask.
-    int fd = ::open(path.c_str(), flags | O_NOFOLLOW | O_CLOEXEC, 0666);
+    int fd = ::open(path.c_str(), flags | O_NOFOLLOW | O_CLOEXEC, 0666);  // flawfinder: ignore - this is the no-follow open
     if (fd == -1)
         return NULL;
     FILE* fp = fdopen(fd, mode);
