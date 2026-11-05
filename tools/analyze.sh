@@ -149,7 +149,7 @@ SOURCES="$(ls "$SRC_DIR"/src/*.cpp "$SRC_DIR"/src/*.c 2>/dev/null)"
 
 if want cppcheck && command -v cppcheck >/dev/null 2>&1; then
     log "cppcheck (exhaustive)"
-    cppcheck --enable=all --inconclusive --check-level=exhaustive \
+    cppcheck --enable=all --inconclusive --check-level=exhaustive --inline-suppr \
              --std=c++17 --language=c++ \
              --suppress=missingIncludeSystem --suppress=checkersReport \
              --suppress=unusedFunction \

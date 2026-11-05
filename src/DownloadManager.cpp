@@ -1841,7 +1841,7 @@ void DownloadManager::completed_dl(DownloadTask* task)
                 //delete the "downloaded" file...probably just a fragment of html that was sent by the server as an informative "moved" message.
                 //since I'm not a browser, i'll ignore this
                 std::string oldfile = task->destPath +task->destFile;
-                int ret = g_remove((const gchar *)(oldfile.c_str()));
+                int ret = g_remove(oldfile.c_str());
 
                 if (0 != ret) {
                     //LOG_DEBUG ("DownloadManager::completed_dl : g_remove error");

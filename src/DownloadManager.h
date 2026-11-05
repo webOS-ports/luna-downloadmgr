@@ -320,6 +320,9 @@ private:
 
     DownloadManager();
     ~DownloadManager();
+    // One per process, owning the history db, the curl handles and the bus handle.
+    DownloadManager(const DownloadManager&) = delete;
+    DownloadManager& operator=(const DownloadManager&) = delete;
 
     static unsigned long s_ticketGenerator;
 

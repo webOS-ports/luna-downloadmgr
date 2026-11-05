@@ -84,8 +84,14 @@ private:
     {
     public:
         TrackerImpl(T* _p) : m_p(_p) {}
+        // Owns m_p: a copy would delete the instance twice.
+        TrackerImpl(const TrackerImpl&) = delete;
+        TrackerImpl& operator=(const TrackerImpl&) = delete;
         ~TrackerImpl()
         {
+            // The copy constructor and operator= are deleted above; cppcheck does not see that in
+            // a template.
+            // cppcheck-suppress [noCopyConstructor, noOperatorEq]
             delete m_p;
             Singleton<T>::_instance = 0;
         }

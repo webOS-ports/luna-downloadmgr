@@ -108,7 +108,8 @@ void glibcurl_init() {
     LOG_DEBUG("Failed to create new glib source in %s", __FUNCTION__);
     return;
   }
-  curlSrc = (CurlGSource*)src;
+  // A CurlGSource starts with its GSource: g_source_new() was given sizeof(CurlGSource).
+  curlSrc = reinterpret_cast<CurlGSource*>(src);
   g_source_attach(&curlSrc->source, NULL);
 
   if (!g_thread_supported()) g_thread_init(NULL);
@@ -389,7 +390,7 @@ void glibcurl_init() {
   int fd = -1;
   /* Create source object for curl file descriptors, and hook it into the
      default main context. */
-  curlSrc = (CurlGSource*)g_source_new(&curlFuncs, sizeof(CurlGSource));
+  curlSrc = reinterpret_cast<CurlGSource*>(g_source_new(&curlFuncs, sizeof(CurlGSource)));
   g_source_attach(&curlSrc->source, NULL);
 
   /* Init rest of our data */

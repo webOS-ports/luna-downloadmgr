@@ -119,7 +119,7 @@ DownloadSettings::~DownloadSettings()
     gchar* _vs = NULL;\
     GError* _error = 0;\
     _vs=g_key_file_get_string(keyfile,cat,name,&_error);\
-    if( !_error && _vs ) { (var)=(const char*)_vs; g_free(_vs); }\
+    if( !_error && _vs ) { (var)=_vs; g_free(_vs); }\
     else if (_error) g_error_free(_error); \
 }
 
@@ -128,7 +128,7 @@ DownloadSettings::~DownloadSettings()
     gchar* _vs = NULL;\
     GError* _error = 0;\
     _vs=g_key_file_get_string(keyfile,cat,name,&_error);\
-    if( !_error && _vs ) { (var)=::MemStringToBytes((const char*)_vs); g_free(_vs); }\
+    if( !_error && _vs ) { (var)=::MemStringToBytes(_vs); g_free(_vs); }\
     else if (_error) g_error_free(_error); \
 }
 
