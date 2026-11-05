@@ -239,6 +239,26 @@ unnoticed.
 With no `--sysroot` it runs cppcheck only, which still catches a useful amount
 with no cross-compile setup.
 
+### Known analyzer reports that are not defects
+
+`gcc -fanalyzer` (GCC 15) runs on a real compile at `-O0` and `-O2`; with
+`-fsyntax-only` it analyses nothing. What it still reports:
+
+- `-Wanalyzer-use-of-uninitialized-value` on functions that return a
+  `std::string` or `pbnjson::JValue` (`Utils.cpp`, `JUtil.cpp`,
+  `DownloadUtils.cpp`, `DownloadTask.cpp`, ...). The return slot is built by
+  the callee's constructor, which the analyzer does not model for C++; the
+  check is turned off in `tools/analyze.sh` for that reason. ASan, UBSan and
+  valgrind see no uninitialised read in those paths.
+- `-Wanalyzer-malloc-leak` inside `boost::regex` (`basic_regex_creator`) and
+  `-Wanalyzer-infinite-loop` inside libstdc++'s `std::list::remove`, both at
+  `-O2`. Third-party code, reported and not changed here.
+
+Everything else - cppcheck, clang-tidy, `clang --analyze` with the `alpha`
+core/unix/security checkers, flawfinder and Coccinelle - reports nothing.
+Inline suppressions (`cppcheck-suppress`, `flawfinder: ignore`, `NOLINT`)
+each carry the reason next to them.
+
 ## Warnings
 
 The tree builds with **no warnings at all** - not even third-party deprecation
