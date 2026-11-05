@@ -61,7 +61,7 @@ void DownloadTask::setMimeType(const std::string& type)
         }
 }
 
-std::string DownloadTask::destToJSON()
+std::string DownloadTask::destToJSON() const
 {
     std::string dest = destPath+destFile;
     pbnjson::JValue jobj = pbnjson::Object();

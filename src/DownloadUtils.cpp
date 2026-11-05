@@ -162,7 +162,6 @@ int splitStringOnKey(std::vector<std::string>& returnSplitSubstrings,const std::
 {
     std::string::size_type start = 0;
     std::string::size_type mark = 0;
-    std::string extracted;
 
     int i=0;
     while (start < baseStr.size()) {
@@ -175,7 +174,7 @@ int splitStringOnKey(std::vector<std::string>& returnSplitSubstrings,const std::
         if (mark == std::string::npos)
             mark = baseStr.size();
 
-        extracted = baseStr.substr(start,mark-start);
+        const std::string extracted = baseStr.substr(start,mark-start);
         if (extracted.size() > 0) {
             //valid string...add it
             returnSplitSubstrings.push_back(extracted);
@@ -299,11 +298,8 @@ bool processSubscription(LSHandle * serviceHandle, LSMessage * message,const std
 
 uint32_t removeSubscriptions(const std::string& key,LSHandle * serviceHandle)
 {
-    if (key.size() == 0)
-        return false;
-
-    if (serviceHandle == NULL)
-        return false;
+    if (key.empty() || serviceHandle == NULL)
+        return 0;
 
     LSSubscriptionIter *iter=NULL;
     LSError lserror;

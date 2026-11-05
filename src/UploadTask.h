@@ -41,22 +41,9 @@ public:
     PostItem(const std::string& key,const std::string& data,ItemType type,const std::string& contentType)
     : _key(key),_type(type),_data(data),_contentType(contentType) {}
 
-    PostItem(const PostItem& c) {
-        _key = c._key;
-        _type = c._type;
-        _data = c._data;
-        _contentType = c._contentType;
-    }
+    PostItem(const PostItem& c) = default;
 
-    PostItem& operator=(const PostItem& c) {
-        if (&c == this)
-            return *this;
-        _key = c._key;
-        _type = c._type;
-        _data = c._data;
-        _contentType = c._contentType;
-        return *this;
-    }
+    PostItem& operator=(const PostItem& c) = default;
 };
 
 class UploadTask {
@@ -66,25 +53,25 @@ public:
     static UploadTask * newFileUploadTask(const std::string& targeturl,
                                       const std::string& sourcefile,
                                       const std::string& filemimepartlabel,
-                                      std::vector<PostItem>& postparts,
+                                      const std::vector<PostItem>& postparts,
                                       std::vector<std::string>& httpheaders,
-                                      std::vector<kvpair>& cookies,
+                                      const std::vector<kvpair>& cookies,
                                       const std::string& contenttype);
     static UploadTask * newBufferUploadTask(const std::string& targeturl,
                                       const std::string& sourcebuffer,
                                       std::vector<std::string>& httpheaders,
                                       const std::string& contenttype);
 
-    const std::string& url() { return m_url; }
-    const std::string& source() { return m_sourceFile; }
-    const uint32_t& id() { return m_ulid; }
+    const std::string& url() const { return m_url; }
+    const std::string& source() const { return m_sourceFile; }
+    const uint32_t& id() const { return m_ulid; }
 
     CURL * getCURLHandlePtr() { return m_p_curlHandle; }
-    const CURLcode& getCURLCode() { return m_curlResultCode; }
-    const uint32_t& getHTTPCode() { return m_httpResultCode; }
+    const CURLcode& getCURLCode() const { return m_curlResultCode; }
+    const uint32_t& getHTTPCode() const { return m_httpResultCode; }
 
-    const std::vector<PostItem>& getPostParts() { return m_postParts;}
-    const std::string&          getContentType() { return m_contentType;}
+    const std::vector<PostItem>& getPostParts() const { return m_postParts;}
+    const std::string&          getContentType() const { return m_contentType;}
 
     void            setCURLCode(const CURLcode& cc) { m_curlResultCode = cc; }
     void            setHTTPCode(const uint32_t& hc) { m_httpResultCode = hc; }
@@ -93,7 +80,7 @@ public:
 
     void            setUploadResponse(const std::string& response) { m_uploadResponse = response;}
     void            appendUploadResponse(const std::string& response) { m_uploadResponse += response; }
-    const std::string& getUploadResponse() { return m_uploadResponse;}
+    const std::string& getUploadResponse() const { return m_uploadResponse;}
 
     void            setReplyLocation(const std::string& s)  { m_replyLocationHeader = s; }
     const std::string& getReplyLocation() const { return m_replyLocationHeader; }
@@ -102,7 +89,7 @@ private:
     UploadTask();
     //propagate into the object and store, postparts and contenttype, as they may be useful in case of redirects, or other transient problems
     UploadTask(const std::string& url,const std::string& file,const std::string& data,uint32_t id,
-            std::vector<PostItem> * postparts,const std::string& contenttype,CURL * p_curl);
+            const std::vector<PostItem> * postparts,const std::string& contenttype,CURL * p_curl);
     // Both were private and, in the copy constructor's case, only copied the
     // raw curl pointers - so a copy would have double-freed the easy handle,
     // the header lists and the form list while silently dropping every

@@ -54,15 +54,15 @@ static CURLSH* s_curlShareHandle = 0;
 // curl callback functions
 // these functions redirect the callback to a function within the instance of download manager
 size_t DownloadManager::cbCurlReadFromFile(void* ptr, size_t size, size_t nmemb, void *stream) {
-    return DownloadManager::instance().cbReadEvent ((CURL *)stream, size*nmemb, (unsigned char *)ptr);
+    return DownloadManager::instance().cbReadEvent (static_cast<CURL*>(stream), size*nmemb, static_cast<unsigned char*>(ptr));
 }
 
 size_t DownloadManager::cbCurlWriteToFile(void* ptr, size_t size, size_t nmemb, void *stream) {
-    return DownloadManager::instance().cbWriteEvent ((CURL *)stream, size*nmemb, (unsigned char *)ptr);
+    return DownloadManager::instance().cbWriteEvent (static_cast<CURL*>(stream), size*nmemb, static_cast<const unsigned char*>(ptr));
 }
 
 size_t DownloadManager::cbCurlHeaderInfo(void * ptr,size_t size,size_t nmemb,void * stream) {
-    return DownloadManager::instance().cbHeader ((CURL *)stream, size*nmemb, (const char *)ptr);
+    return DownloadManager::instance().cbHeader (static_cast<CURL*>(stream), size*nmemb, static_cast<const char*>(ptr));
 }
 
 void DownloadManager::cbGlibcurl(void* data) {
@@ -70,17 +70,17 @@ void DownloadManager::cbGlibcurl(void* data) {
 }
 
 int DownloadManager::cbCurlSetSocketOptions(void *clientp,curl_socket_t curlfd,curlsocktype purpose) {
-    return DownloadManager::instance().cbSetSocketOptions(clientp,curlfd,purpose);
+    return DownloadManager::cbSetSocketOptions(clientp,curlfd,purpose);
 }
 
 
 // These few next functions are somewhat trivial for now, but defined explicitly rather than inline in the code where used, so that their
 // behavior can be changed easily
-std::string DownloadManager::getDownloadPath() {
+const std::string& DownloadManager::getDownloadPath() const {
     return (m_downloadPath);
 }
 
-std::string DownloadManager::generateTempPath( const std::string& resourceName ) {
+std::string DownloadManager::generateTempPath( const std::string& resourceName ) const {
 
     return (m_downloadPath + resourceName);
 }
@@ -196,7 +196,7 @@ bool    DownloadManager::isValidOverridePath(const std::string& path) {
 bool    DownloadManager::isValidOverrideFile(const std::string& file) {
 
     //do not allow / in the file. This will avoid complicated parsing to check for sneaky path overrides in the filename
-    if (file.find("/") != std::string::npos)
+    if (file.find('/') != std::string::npos)
         return false;
 
     if (file.find_first_not_of('.') == std::string::npos)
@@ -448,7 +448,6 @@ int DownloadManager::download (const std::string& caller,
 
                 LOG_DEBUG ( " Download : File Exist - Renaming existing file %s to %s", task->destFile.c_str() ,newFileName.str().c_str() );
                 tmpFilePath = newTempFile.str();
-                finalFilePath = newFinalFile.str();
                 task->destFile = newFileName.str();
             }
         }
@@ -1164,7 +1163,6 @@ void DownloadManager::resumeMultipleOnAlternateInterface(Connection oldInterface
 {
     //go through all interrupted downloads from the db and resume each
     std::vector<DownloadHistoryDb::DownloadHistory> interrupteds;
-    std::string err;
     int rc=0;
 
     if (!m_pDlDb) {
@@ -1520,8 +1518,6 @@ void DownloadManager::cbGlib()
     CURLMsg* msg = nullptr;
     int inQueue = 0;
     TransferTask * _task = NULL;
-    long l_httpCode = 0;
-    long l_httpConnectCode = 0;
     DownloadTask * dl_task = NULL;
     UploadTask * ul_task = NULL;
 //    LOG_DEBUG ("%s Function-Entry",__FUNCTION__);
@@ -1538,8 +1534,8 @@ void DownloadManager::cbGlib()
             /// Note: Error handling will NOT be done here...it will be done in completed()
             ///...but store the results here before removeTask annihilates the curl handle
 
-            l_httpCode = 0;
-            l_httpConnectCode = 0;
+            long l_httpCode = 0;
+            long l_httpConnectCode = 0;
             CURLcode inforc = curl_easy_getinfo(msg->easy_handle,CURLINFO_RESPONSE_CODE,&l_httpCode);
             if (inforc != CURLE_OK) {
                 LOG_WARNING_PAIRS_ONLY (LOGID_CURL_FAIL_HTTP_STATUS, 1, PMLOGKS("reason", "failed to retrieve HTTP status code from handle"));
@@ -1594,7 +1590,7 @@ void DownloadManager::cbGlib()
 //  LOG_DEBUG ("%s Function-Exit",__FUNCTION__);
 }
 
-size_t DownloadManager::cbWriteEvent (CURL * taskHandle,size_t payloadSize,unsigned char * payload)
+size_t DownloadManager::cbWriteEvent (CURL * taskHandle,size_t payloadSize,const unsigned char * payload)
 {
 //  LOG_DEBUG ("%s Function-Entry",__FUNCTION__);
 
@@ -2051,7 +2047,7 @@ void DownloadManager::completed_dl(DownloadTask* task)
     }
 }
 
-void DownloadManager::completed_ul(UploadTask* task)
+void DownloadManager::completed_ul(const UploadTask* task)
 {
     if (task == NULL)
         return;
@@ -2070,7 +2066,7 @@ void DownloadManager::completed_ul(UploadTask* task)
 
 gboolean DownloadManager::cbIdleSourceTransfersDrained (gpointer data)
 {
-    DownloadManager* dlm = (DownloadManager*) data;
+    DownloadManager* dlm = static_cast<DownloadManager*>(data);
     if (dlm->m_queue.empty() && dlm->m_activeTaskCount == 0) {
         /* This used to destroy and recreate the whole curl multi handle here -
          * shutdownGlibCurl() immediately followed by startupGlibCurl() - every
@@ -2120,7 +2116,7 @@ bool DownloadManager::cancel( unsigned long ticket )
     if (_task->type == TransferTask::UPLOAD_TASK)
     {
         //TODO: when The Great Rewrite comes, make me more OOP-ly
-        UploadTask * task = _task->p_uploadTask;
+        const UploadTask * task = _task->p_uploadTask;
         postUploadStatus(task);
         delete _task;
         return true;
@@ -2285,7 +2281,7 @@ int DownloadManager::getJSONListOfAllDownloads(std::vector<std::string>& downloa
         if (task == NULL) {
             //this shouldn't happen! - but skipping without advancing the
             //iterator used to spin this loop forever, hanging the service
-            iter++;
+            ++iter;
             continue;
         }
 
@@ -2297,7 +2293,7 @@ int DownloadManager::getJSONListOfAllDownloads(std::vector<std::string>& downloa
         jobj.put("owner", task->ownerId);
         jobj.put("connectionName", task->connectionName);
         downloadList.push_back(JUtil::toSimpleString(jobj));
-        iter++;
+        ++iter;
         ++i;
     }
     return i;
@@ -2324,7 +2320,7 @@ TransferTask * DownloadManager::removeTask_ul(uint32_t ticket)
     TransferTask * _task = getTask(task->getCURLHandlePtr());
 
     //remove it from the curl descriptor map
-    m_handleMap.erase(task->getCURLHandlePtr());
+    m_handleMap.erase(CurlDescriptor(task->getCURLHandlePtr()));
 
     //remove from glibcurl's pool
     if (glibcurl_remove(task->getCURLHandlePtr()) != 0) {
@@ -2532,7 +2528,7 @@ bool DownloadManager::getDownloadTaskCopy(unsigned long ticket,DownloadTask& tas
     if (iter == m_ticketMap.end())
         return false;   //not found
 
-    DownloadTask * ptrFoundTask = iter->second;
+    const DownloadTask * ptrFoundTask = iter->second;
     if (ptrFoundTask == NULL) {
         //whoa! these 'NULL' entries should never occur..perhaps a more severe error flagging should be done here to alert about this case
         return false;
@@ -2541,10 +2537,10 @@ bool DownloadManager::getDownloadTaskCopy(unsigned long ticket,DownloadTask& tas
     task.curlDesc = ptrFoundTask->curlDesc;
     task.bytesCompleted = ptrFoundTask->bytesCompleted;
     task.bytesTotal = ptrFoundTask->bytesTotal;
-    task.destPath = ptrFoundTask->destPath.c_str();                 //Prevent CoW  (DEBUGGING)
-    task.destFile = ptrFoundTask->destFile.c_str();                 //Prevent CoW  (DEBUGGING)
+    task.destPath = ptrFoundTask->destPath;
+    task.destFile = ptrFoundTask->destFile;
     task.ticket = ptrFoundTask->ticket;
-    task.url = ptrFoundTask->url.c_str();                   //Prevent CoW  (DEBUGGING)
+    task.url = ptrFoundTask->url;
     task.setMimeType(ptrFoundTask->detectedMIMEType);   //Prevent CoW  (DEBUGGING)
 
     return true;
@@ -2636,7 +2632,7 @@ bool DownloadManager::is1xConnection(const std::string& networkType)
     return false;
 }
 
-bool DownloadManager::isInterfaceUp(DownloadManager::Connection connectionId)
+bool DownloadManager::isInterfaceUp(DownloadManager::Connection connectionId) const
 {
     ConnectionStatus status = InetConnectionUnknownState;
     switch (connectionId)
@@ -2673,7 +2669,7 @@ bool DownloadManager::isInterfaceUp(DownloadManager::Connection connectionId)
     return (status == InetConnectionConnected);
 }
 
-unsigned int DownloadManager::howManyTasksActive()
+unsigned int DownloadManager::howManyTasksActive() const
 {
     return (m_handleMap.size());
 }
@@ -2770,9 +2766,9 @@ void DownloadManager::shutdownGlibCurl()
 uint32_t DownloadManager::uploadPOSTFile(const std::string& file,
         const std::string& url,
         const std::string& filePostLabel,
-        std::vector<PostItem>& postHeaders,
+        const std::vector<PostItem>& postHeaders,
         std::vector<std::string>& httpHeaders,
-        std::vector<kvpair>& cookies,
+        const std::vector<kvpair>& cookies,
         const std::string& contentType)
 {
 
@@ -2843,7 +2839,7 @@ uint32_t DownloadManager::uploadPOSTBuffer(const std::string& buffer,
     return p_ult->id();
 }
 
-void DownloadManager::postUploadStatus(UploadTask * pUlTask)
+void DownloadManager::postUploadStatus(const UploadTask * pUlTask)
 {
     if (pUlTask == NULL)
         return;
@@ -2873,7 +2869,7 @@ void DownloadManager::postUploadStatus (uint32_t id,const std::string& sourceFil
 }
 
 
-bool DownloadManager::is1xConnection()
+bool DownloadManager::is1xConnection() const
 {
     if ((m_wanConnectionStatus == InetConnectionConnected) && (m_wanConnectionType == WanConnection1x))
         return true;
@@ -2886,7 +2882,7 @@ bool DownloadManager::is1xDownloadAllowed()
     return DownloadManager::s_allow1x;
 }
 
-bool DownloadManager::canDownloadNow()
+bool DownloadManager::canDownloadNow() const
 {
     bool available = (m_wifiConnectionStatus == InetConnectionConnected)
     || (m_wanConnectionStatus == InetConnectionConnected)
@@ -2908,7 +2904,7 @@ bool DownloadManager::canDownloadNow()
     }
 
     if (m_wanConnectionStatus == InetConnectionConnected
-        && (!is1xConnection() || (is1xConnection() && is1xDownloadAllowed())))
+        && (!is1xConnection() || is1xDownloadAllowed()))
     {
 //  LOG_DEBUG ("wan connection download ok now");
     return true;
@@ -2932,8 +2928,8 @@ size_t DownloadManager::cbUploadResponse(void *ptr, size_t size, size_t nmemb, v
         return realsize;            //DATA LOSS!
     }
 
-    UploadTask * p_ult = (UploadTask *)data;
-    p_ult->appendUploadResponse(std::string(((char *)ptr),realsize));
+    UploadTask * p_ult = static_cast<UploadTask*>(data);
+    p_ult->appendUploadResponse(std::string(static_cast<const char*>(ptr),realsize));
     return realsize;
 }
 
@@ -2983,15 +2979,9 @@ bool DownloadManager::msmAvail(LSMessage* message)
                 // FIXME: Should pop up an error message;
             }
 
-            if (m_brickMode) {
-                //LOG_DEBUG ("%s: exiting brick mode", __PRETTY_FUNCTION__);
-                m_brickMode = false;
-            }
+            m_brickMode = false;
 
-            if (m_fscking) {
-                //LOG_DEBUG ("%s: fsck ended", __PRETTY_FUNCTION__);
-                m_fscking = false;
-            }
+            m_fscking = false;
         }
     }
 
@@ -3041,10 +3031,7 @@ bool DownloadManager::msmProgress(LSMessage* message)
             resumeAll();
         }
 
-        if (m_fscking) {
-            //LOG_DEBUG ("%s: fsck ended", __PRETTY_FUNCTION__);
-            m_fscking = false;
-        }
+        m_fscking = false;
     }
 
     return true;
@@ -3076,10 +3063,7 @@ bool DownloadManager::msmEntry(LSMessage* message)
             resumeAll();
         }
 
-        if (m_fscking) {
-            //LOG_DEBUG ("%s: fsck ended", __PRETTY_FUNCTION__);
-            m_fscking = false;
-        }
+        m_fscking = false;
     }
     else if (strcasecmp(modeText.c_str(), "brick") == 0) {
 

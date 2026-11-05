@@ -222,7 +222,7 @@ void DownloadSettings::load( )
 
     KEY_UINT64("Filesystem","SpaceRemainStopmarkKB",freespaceStopmarkRemainingKBytes);
 
-    if ((freespaceLowmarkFullPercent <= 0) || (freespaceLowmarkFullPercent >= 100))
+    if ((freespaceLowmarkFullPercent == 0) || (freespaceLowmarkFullPercent >= 100))
     {
         freespaceLowmarkFullPercent = FREESPACE_LOWMARK_FULL_PCT;
     }

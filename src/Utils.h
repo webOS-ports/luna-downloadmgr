@@ -40,9 +40,9 @@ private:
     class AsyncCall : public IAsyncCall
     {
     public:
-        AsyncCall(T _func) : func(_func) {}
+        explicit AsyncCall(T _func) : func(_func) {}
 
-        void Call() { func(); }
+        void Call() override { func(); }
     private:
         T func;
     };

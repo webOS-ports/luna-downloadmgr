@@ -204,7 +204,6 @@ void glibcurl_set_callback(GlibcurlCallback function, void* data) {
 /*______________________________________________________________________*/
 
 static gpointer selectThread(gpointer data) {
-  int fdCount;
   struct timeval timeout;
   assert(data == 0); /* Just to get rid of unused param warning */
 
@@ -224,9 +223,10 @@ static gpointer selectThread(gpointer data) {
                      &curlSrc->fdWrite, &curlSrc->fdExc, &curlSrc->fdMax);
     timeout.tv_sec = GLIBCURL_TIMEOUT / 1000;
     timeout.tv_usec = (GLIBCURL_TIMEOUT % 1000) * 1000;
-    fdCount = select(curlSrc->fdMax + 1, &curlSrc->fdRead, &curlSrc->fdWrite,
+    int fdCount = select(curlSrc->fdMax + 1, &curlSrc->fdRead, &curlSrc->fdWrite,
                      &curlSrc->fdExc, &timeout);
     D((stderr, "selectThread: select() fdCount=%d\n", fdCount));
+    (void)fdCount;              /* only D() reads it */
 
     g_atomic_int_inc(&curlSrc->gtkBlockAndWait); /* "GTK thread, block!" */
     D((stderr, "selectThread: waking up GTK thread %d\n",
@@ -251,6 +251,8 @@ static gpointer selectThread(gpointer data) {
 /* Returning FALSE may cause the main loop to block indefinitely, but that is
    not a problem, we use g_main_context_wakeup to wake it up */
 /* Returns TRUE iff it holds the mutex lock */
+/* GSourceFuncs fixes the signature */
+// cppcheck-suppress constParameterCallback
 gboolean prepare(GSource* source, gint* timeout) {
   assert(source == &curlSrc->source);
   D((stderr, "prepare: callPerform=%d, thread=%p\n",
@@ -291,12 +293,16 @@ gboolean prepare(GSource* source, gint* timeout) {
 /*______________________________________________________________________*/
 
 /* Called after all the file descriptors are polled by glib. */
+/* GSourceFuncs fixes the signature */
+// cppcheck-suppress constParameterCallback
 gboolean check(GSource* source) {
   assert(source == &curlSrc->source);
   return FALSE;
 }
 /*______________________________________________________________________*/
 
+/* GSourceFuncs fixes the signature */
+// cppcheck-suppress constParameterCallback
 gboolean dispatch(GSource* source, GSourceFunc callback,
                   gpointer user_data) {
   CURLMcode x = CURLM_OK;
@@ -321,6 +327,8 @@ gboolean dispatch(GSource* source, GSourceFunc callback,
 }
 /*______________________________________________________________________*/
 
+/* GSourceFuncs fixes the signature */
+// cppcheck-suppress constParameterCallback
 void finalize(GSource* source) {
   assert(source == &curlSrc->source);
 }
@@ -540,6 +548,8 @@ static void registerUnregisterFds() {
 /* Called before all the file descriptors are polled by the glib main loop.
    We must have a look at all fds that libcurl wants polled. If any of them
    are new/no longer needed, we have to (de)register them with glib. */
+/* GSourceFuncs fixes the signature */
+// cppcheck-suppress constParameterCallback
 gboolean prepare(GSource* source, gint* timeout) {
   D((stderr, "prepare\n"));
   assert(source == &curlSrc->source);
@@ -580,6 +590,8 @@ gboolean prepare(GSource* source, gint* timeout) {
    poll() call) to our GPollFD objects. How inefficient all that copying
    is... let's add some more and copy the results of these revents into
    libcurl's fd_sets! */
+/* GSourceFuncs fixes the signature */
+// cppcheck-suppress constParameterCallback
 gboolean check(GSource* source) {
   int fd = -1, somethingHappened = 0;
 
@@ -632,6 +644,8 @@ gboolean check(GSource* source) {
 }
 /*______________________________________________________________________*/
 
+/* GSourceFuncs fixes the signature */
+// cppcheck-suppress constParameterCallback
 gboolean dispatch(GSource* source, GSourceFunc callback,
                   gpointer user_data) {
   CURLMcode x = CURLM_OK;
@@ -657,6 +671,8 @@ gboolean dispatch(GSource* source, GSourceFunc callback,
 }
 /*______________________________________________________________________*/
 
+/* GSourceFuncs fixes the signature */
+// cppcheck-suppress constParameterCallback
 void finalize(GSource* source) {
   assert(source == &curlSrc->source);
   registerUnregisterFds();

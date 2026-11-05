@@ -17,7 +17,7 @@
 #ifndef DOWNLOADTASK_H_
 #define DOWNLOADTASK_H_
 
-#include "glib.h"
+#include <glib.h>
 #include "glibcurl.h"
 #include <string>
 #include <pbnjson.hpp>
@@ -37,14 +37,8 @@ class CurlDescriptor {
 
 public:
     CurlDescriptor() : _handle(0) , headerList(0) , _resultCode((CURLcode)0) , _httpResultCode(0) , _httpConnectCode(0) {}
-    CurlDescriptor(CURL * curlHandle) : _handle(curlHandle) , headerList(NULL) , _resultCode((CURLcode)0) , _httpResultCode(0) , _httpConnectCode(0) {}
-    CurlDescriptor(const CurlDescriptor& cd) {
-        _handle = cd._handle;
-        headerList = cd.headerList;
-        _resultCode = cd._resultCode;
-        _httpResultCode = cd._httpResultCode;
-        _httpConnectCode = cd._httpConnectCode;
-    }
+    explicit CurlDescriptor(CURL * curlHandle) : _handle(curlHandle) , headerList(NULL) , _resultCode((CURLcode)0) , _httpResultCode(0) , _httpConnectCode(0) {}
+    CurlDescriptor(const CurlDescriptor& cd) = default;
     ~CurlDescriptor() {}
 
     bool operator==(const CurlDescriptor& cd) const { return (_handle == cd._handle);}
@@ -82,21 +76,21 @@ public:
         return tmp;
     }
 
-    CURLcode getResultCode() {return _resultCode;}
+    CURLcode getResultCode() const {return _resultCode;}
     CURLcode setResultCode(CURLcode resultCode) {
         CURLcode tmp = _resultCode;
         _resultCode = resultCode;
         return tmp;
     }
 
-    long getHttpResultCode() { return _httpResultCode;}
+    long getHttpResultCode() const { return _httpResultCode;}
     void setHttpResultCode(long httpResultCode) {
         //long tmp = _httpResultCode;
         _httpResultCode = httpResultCode;
         return;
     }
 
-    long getHttpConnectCode() { return _httpConnectCode;}
+    long getHttpConnectCode() const { return _httpConnectCode;}
     void setHttpConnectCode(long httpConnectCode)
     {
         //long tmp = _httpConnectCode;
@@ -146,13 +140,13 @@ public:
     void setMimeType(const std::string& type);
     std::string toJSONString();
     pbnjson::JValue toJSON();
-    std::string destToJSON();
+    std::string destToJSON() const;
 
     void setLocationHeader(const std::string& s) { httpHeader_Location = s; }
     void setUpdateInterval(uint64_t interval = 0);
 
     // functions for counting maximum redirections.
-    int getRemainingRedCounts() { return remainingRedCounts; }
+    int getRemainingRedCounts() const { return remainingRedCounts; }
     void decreaseRedCounts() { remainingRedCounts--; }
     void setRemainingRedCounts(const int currentRedCounts) { remainingRedCounts = currentRedCounts; }
 

@@ -45,12 +45,12 @@ JUtil::Error::Error()
 {
 }
 
-JUtil::Error::ErrorCode JUtil::Error::code()
+JUtil::Error::ErrorCode JUtil::Error::code() const
 {
     return m_code;
 }
 
-std::string JUtil::Error::detail()
+const std::string& JUtil::Error::detail() const
 {
     return m_detail;
 }

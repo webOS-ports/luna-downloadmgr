@@ -26,8 +26,8 @@ public:
 
     enum TransferTaskType { DOWNLOAD_TASK , UPLOAD_TASK };
 
-    TransferTask(DownloadTask * ptr_downloadTask) : type(DOWNLOAD_TASK) , p_downloadTask(ptr_downloadTask) , p_uploadTask(0) , m_remove(false) {}
-    TransferTask(UploadTask * ptr_uploadTask) : type(UPLOAD_TASK) , p_downloadTask(0) , p_uploadTask(ptr_uploadTask) , m_remove(false) {}
+    explicit TransferTask(DownloadTask * ptr_downloadTask) : type(DOWNLOAD_TASK) , p_downloadTask(ptr_downloadTask) , p_uploadTask(0) , m_remove(false) {}
+    explicit TransferTask(UploadTask * ptr_uploadTask) : type(UPLOAD_TASK) , p_downloadTask(0) , p_uploadTask(ptr_uploadTask) , m_remove(false) {}
     virtual ~TransferTask() {
         if (p_downloadTask)
             delete p_downloadTask;

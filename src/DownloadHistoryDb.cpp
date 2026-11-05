@@ -27,6 +27,12 @@
 #include "Logging.h"
 #include "Utils.h"
 
+// sqlite3 hands text columns out as UTF-8 bytes (const unsigned char*); NULL for an SQL NULL.
+static const char* columnText(sqlite3_stmt* statement, int column)
+{
+    return reinterpret_cast<const char*>(sqlite3_column_text(statement, column));
+}
+
 #define VALID_SCHEMA_VER    "system-2"
 ///////////////////// DOWNLOAD HISTORY DB //////////////////////////////////////////////
 
@@ -103,7 +109,7 @@ Done:
     return false;
 }
 
-void DownloadHistoryDb::addHistory(unsigned long ticket,const std::string& caller,const std::string interface,const std::string& state, const std::string& downloadRecordString)
+void DownloadHistoryDb::addHistory(unsigned long ticket,const std::string& caller,const std::string& interface,const std::string& state, const std::string& downloadRecordString)
 {
     if (!m_dlDb) {
         LOG_DEBUG ("Function addHistory() failed: no m_dlDb");
@@ -149,7 +155,6 @@ int DownloadHistoryDb::getDownloadHistoryFull(unsigned long ticket,std::string& 
     int ret = 0;
     gchar* queryStr = 0;
 
-    std::string result;
 
     if (!m_dlDb)
         return 0;
@@ -170,16 +175,16 @@ int DownloadHistoryDb::getDownloadHistoryFull(unsigned long ticket,std::string& 
 
     ret = sqlite3_step(statement);
     if (ret == SQLITE_ROW) {
-        const char* res = (const char*)sqlite3_column_text(statement,1);
+        const char* res = columnText(statement, 1);
         if (res)
             r_caller = res;
-        res = (const char*)sqlite3_column_text(statement,2);
+        res = columnText(statement, 2);
         if (res)
             r_interface = res;
-        res = (const char*)sqlite3_column_text(statement,3);
+        res = columnText(statement, 3);
         if (res)
             r_state = res;
-        res = (const char*)sqlite3_column_text(statement,4);
+        res = columnText(statement, 4);
         if (res)
             r_history = res;
         ret=1;
@@ -225,7 +230,7 @@ std::string DownloadHistoryDb::getDownloadHistoryRecord(unsigned long ticket)
     if (ret == SQLITE_ROW) {
         const unsigned char* res = sqlite3_column_text(statement, 0);
         if (res)
-            result = (const char*) res;
+            result = reinterpret_cast<const char*>(res);
     }
 
 Done:
@@ -247,7 +252,6 @@ int DownloadHistoryDb::getDownloadHistoryRecord(unsigned long ticket,DownloadHis
     int rc=0;
     char* queryStr = 0;
 
-    std::string result;
 
     if (!m_dlDb)
         return rc;
@@ -268,10 +272,10 @@ int DownloadHistoryDb::getDownloadHistoryRecord(unsigned long ticket,DownloadHis
     while (ret == SQLITE_ROW) {
         unsigned long int ticketDb = (unsigned long int)sqlite3_column_int(statement,0);
         const char* res[4];
-        res[0] = (const char *)sqlite3_column_text(statement, 1);
-        res[1] = (const char *)sqlite3_column_text(statement, 2);
-        res[2] = (const char *)sqlite3_column_text(statement, 3);
-        res[3] = (const char *)sqlite3_column_text(statement, 4);
+        res[0] = columnText(statement, 1);
+        res[1] = columnText(statement, 2);
+        res[2] = columnText(statement, 3);
+        res[3] = columnText(statement, 4);
         if (res[0]) {
             r_historyRecord = DownloadHistory(ticketDb,res[0],res[1],res[2],res[3]);
             ++rc;
@@ -299,7 +303,6 @@ int DownloadHistoryDb::getDownloadHistoryRecordsForOwner(const std::string& owne
     int rc=0;
     char* queryStr = 0;
 
-    std::string result;
 
     if (!m_dlDb)
         return rc;
@@ -320,10 +323,10 @@ int DownloadHistoryDb::getDownloadHistoryRecordsForOwner(const std::string& owne
     while (ret == SQLITE_ROW) {
         unsigned long int ticket = (unsigned long int)sqlite3_column_int(statement,0);
         const char* res[4];
-        res[0] = (const char *)sqlite3_column_text(statement, 1);
-        res[1] = (const char *)sqlite3_column_text(statement, 2);
-        res[2] = (const char *)sqlite3_column_text(statement, 3);
-        res[3] = (const char *)sqlite3_column_text(statement, 4);
+        res[0] = columnText(statement, 1);
+        res[1] = columnText(statement, 2);
+        res[2] = columnText(statement, 3);
+        res[3] = columnText(statement, 4);
         if (res[0]) {
             r_historyRecords.push_back(DownloadHistory(ticket,res[0],res[1],res[2],res[3]));
             ++rc;
@@ -352,7 +355,6 @@ int DownloadHistoryDb::getDownloadHistoryRecordsForState(const std::string& stat
     int rc=0;
     char* queryStr = 0;
 
-    std::string result;
 
     if (!m_dlDb)
         return rc;
@@ -373,10 +375,10 @@ int DownloadHistoryDb::getDownloadHistoryRecordsForState(const std::string& stat
     while (ret == SQLITE_ROW) {
         unsigned long int ticket = (unsigned long int)sqlite3_column_int(statement,0);
         const char* res[4];
-        res[0] = (const char *)sqlite3_column_text(statement, 1);
-        res[1] = (const char *)sqlite3_column_text(statement, 2);
-        res[2] = (const char *)sqlite3_column_text(statement, 3);
-        res[3] = (const char *)sqlite3_column_text(statement, 4);
+        res[0] = columnText(statement, 1);
+        res[1] = columnText(statement, 2);
+        res[2] = columnText(statement, 3);
+        res[3] = columnText(statement, 4);
         if (res[2]) {
             r_historyRecords.push_back(DownloadHistory(ticket,res[0],res[1],res[2],res[3]));
             ++rc;
@@ -404,7 +406,6 @@ int DownloadHistoryDb::getDownloadHistoryRecordsForInterface(const std::string& 
     int rc=0;
     char* queryStr = 0;
 
-    std::string result;
 
     if (!m_dlDb)
         return rc;
@@ -425,10 +426,10 @@ int DownloadHistoryDb::getDownloadHistoryRecordsForInterface(const std::string& 
     while (ret == SQLITE_ROW) {
         unsigned long int ticket = (unsigned long int)sqlite3_column_int(statement,0);
         const char* res[4];
-        res[0] = (const char *)sqlite3_column_text(statement, 1);
-        res[1] = (const char *)sqlite3_column_text(statement, 2);
-        res[2] = (const char *)sqlite3_column_text(statement, 3);
-        res[3] = (const char *)sqlite3_column_text(statement, 4);
+        res[0] = columnText(statement, 1);
+        res[1] = columnText(statement, 2);
+        res[2] = columnText(statement, 3);
+        res[3] = columnText(statement, 4);
         if (res[1]) {
             r_historyRecords.push_back(DownloadHistory(ticket,res[0],res[1],res[2],res[3]));
             ++rc;
@@ -455,7 +456,6 @@ int DownloadHistoryDb::getDownloadHistoryRecordsForStateAndInterface(const std::
     int rc=0;
     char* queryStr = 0;
 
-    std::string result;
 
     if (!m_dlDb)
         return rc;
@@ -476,10 +476,10 @@ int DownloadHistoryDb::getDownloadHistoryRecordsForStateAndInterface(const std::
     while (ret == SQLITE_ROW) {
         unsigned long int ticket = (unsigned long int)sqlite3_column_int(statement,0);
         const char* res[4];
-        res[0] = (const char *)sqlite3_column_text(statement, 1);
-        res[1] = (const char *)sqlite3_column_text(statement, 2);
-        res[2] = (const char *)sqlite3_column_text(statement, 3);
-        res[3] = (const char *)sqlite3_column_text(statement, 4);
+        res[0] = columnText(statement, 1);
+        res[1] = columnText(statement, 2);
+        res[2] = columnText(statement, 3);
+        res[3] = columnText(statement, 4);
         if (res[1]) {
             r_historyRecords.push_back(DownloadHistory(ticket,res[0],res[1],res[2],res[3]));
             ++rc;
@@ -613,7 +613,7 @@ bool DownloadHistoryDb::checkTableConsistency()
     ret = sqlite3_step(statement);
     if (ret == SQLITE_ROW) {
         // everything OK.
-        const char * ver = (const char *)sqlite3_column_text(statement, 0);
+        const char * ver = columnText(statement, 0);
         std::string version;
         if (ver != NULL)
             version = ver;
@@ -682,7 +682,7 @@ bool DownloadHistoryDb::integrityCheckDb()
     ret = sqlite3_step(statement);
     if (ret == SQLITE_ROW) {
         const unsigned char* result = sqlite3_column_text(statement, 0);
-        if (result && strcasecmp((const char*) result, "ok") == 0)
+        if (result && strcasecmp(reinterpret_cast<const char*>(result), "ok") == 0)
             integrityOk = true;
     }
 

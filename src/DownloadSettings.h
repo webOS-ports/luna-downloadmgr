@@ -74,7 +74,7 @@ public:
 private:
     void load();
     DownloadSettings();
-    ~DownloadSettings();
+    ~DownloadSettings() override;
 
     friend class Singleton<DownloadSettings>;
 };

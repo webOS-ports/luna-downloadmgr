@@ -1228,13 +1228,12 @@ bool DownloadManager::cbDownloadStatusQuery(LSHandle* lshandle, LSMessage *msg, 
 Done:
 
     pbnjson::JValue responseRoot = pbnjson::Object();
-    std::string lbuff;
     responseRoot.put("ticket", (int64_t)ticket_id);
     if (fromTicketMap)
     {
         responseRoot.put("url", task.url);
 
-        lbuff = Utils::toString(task.bytesCompleted);
+        std::string lbuff = Utils::toString(task.bytesCompleted);
         responseRoot.put("amountReceived", (int32_t)(task.bytesCompleted));
         responseRoot.put("e_amountReceived", lbuff);
 
@@ -1488,6 +1487,7 @@ bool DownloadManager::cbUpload (LSHandle* lshandle, LSMessage* msg, void* user_d
     if (!jo_cookies.isNull()) {
         for (const pbnjson::JValue::KeyValue &cookie : jo_cookies.children())
         {
+            // cppcheck-suppress useStlAlgorithm ; std::transform over pbnjson's children() range reads worse
             cookies.push_back(std::pair<std::string,std::string>(cookie.first.asString(),
                                                                 cookie.second.asString()));
         }
@@ -1645,12 +1645,9 @@ bool DownloadManager::cbConnectionManagerConnectionStatus(LSHandle* lshandle, LS
     if (root.hasKey("wifi"))
     {
         std::string state = topLevelObject["state"].asString();
-        std::string onInternet;
         if (topLevelObject.hasKey("state"))
         {
-            onInternet = topLevelObject["onInternet"].asString();
-            if (!topLevelObject.hasKey("onInternet"))
-                onInternet = "no";
+            const std::string onInternet = topLevelObject.hasKey("onInternet") ? topLevelObject["onInternet"].asString() : std::string("no");
 
             if (state == "connected" && onInternet == "yes")
             {
@@ -1674,12 +1671,9 @@ bool DownloadManager::cbConnectionManagerConnectionStatus(LSHandle* lshandle, LS
     if (root.hasKey("wired"))
     {
         std::string state = topLevelObject["state"].asString();
-        std::string onInternet;
         if (topLevelObject.hasKey("state"))
         {
-            onInternet = topLevelObject["onInternet"].asString();
-            if (!topLevelObject.hasKey("onInternet"))
-                onInternet = "no";
+            const std::string onInternet = topLevelObject.hasKey("onInternet") ? topLevelObject["onInternet"].asString() : std::string("no");
 
             if (state == "connected" && onInternet == "yes")
             {
