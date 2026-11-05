@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include <limits.h>
 #include <stdint.h>
 #include <string>
 
@@ -130,4 +131,15 @@ TEST(ProgressJson, TheFullCountsAreInTheStrings)
     pbnjson::JValue u = uploadProgressJSON(1, 6000000000ull, 9000000000ull);
     EXPECT_EQ(u["e_amountSent"].asString(), "6000000000");
     EXPECT_EQ(u["e_amountTotal"].asString(), "9000000000");
+}
+
+// Subscribers are added under subscriptionKey() and answered under it, so the key of a ticket
+// is its decimal number and nothing else, also above LONG_MAX where a signed form would differ.
+TEST(SubscriptionKey, IsTheTicketInDecimal)
+{
+    EXPECT_EQ(subscriptionKey(0), "0");
+    EXPECT_EQ(subscriptionKey(42), "42");
+    EXPECT_EQ(subscriptionKey(4294967295ul), "4294967295");
+    EXPECT_EQ(subscriptionKey(ULONG_MAX), std::to_string(ULONG_MAX));
+    EXPECT_EQ(subscriptionKey(42), ConvertToString<unsigned long>(42ul));
 }

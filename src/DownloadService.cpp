@@ -345,7 +345,7 @@ bool DownloadManager::cbDownload(LSHandle* lshandle, LSMessage *msg, void *user_
     }
 
     success=true;
-    key = ConvertToString<long>(ticket_id);
+    key = subscriptionKey(ticket_id);
 
     if (LSMessageIsSubscription(msg)) {
 
@@ -452,7 +452,7 @@ bool DownloadManager::cbResumeDownload(LSHandle* lshandle, LSMessage *message,vo
     authToken = root["authToken"].asString();
     deviceId = root["deviceId"].asString();
 
-    key = ConvertToString<long>(ticket);
+    key = subscriptionKey(static_cast<unsigned long>(ticket));
 
     if (LSMessageIsSubscription(message)) {
 
@@ -1209,7 +1209,7 @@ bool DownloadManager::cbDownloadStatusQuery(LSHandle* lshandle, LSMessage *msg, 
     }
 
     ticket_id = root["ticket"].asNumber<int64_t>();
-    subscribeKey = ConvertToString<long>(ticket_id);
+    subscribeKey = subscriptionKey(ticket_id);
     LOG_DEBUG ("DownloadStatusQuery : ticket - %lu ", ticket_id);
 
     //retrieve the info of this ticket from download manager's task map

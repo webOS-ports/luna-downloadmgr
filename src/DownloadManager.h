@@ -258,7 +258,7 @@ private:
 
     std::list<unsigned long> m_queue;
     std::map<CurlDescriptor,TransferTask*> m_handleMap;
-    std::map<long,DownloadTask*> m_ticketMap;
+    std::map<unsigned long,DownloadTask*> m_ticketMap;
 
     std::map<uint32_t,UploadTask *> m_uploadTaskMap;
 

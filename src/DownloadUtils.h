@@ -48,6 +48,10 @@ std::string getHtml5DatabaseFolderNameForApp(const std::string& appId,std::strin
 // What a download or upload subscriber is sent while the transfer runs. amountReceived/amountSent and
 // amountTotal keep their old 32-bit values, for the callers that read those; e_amountReceived,
 // e_amountSent and e_amountTotal carry the full 64-bit counts, as strings.
+// The subscription key of a transfer: its ticket in decimal. Every place that adds or answers a
+// ticket's subscribers uses this, so they always agree on the key.
+std::string subscriptionKey(unsigned long ticket);
+
 pbnjson::JValue downloadProgressJSON(unsigned long ticket, uint64_t received, uint64_t total);
 pbnjson::JValue uploadProgressJSON(unsigned long ticket, uint64_t sent, uint64_t total);
 // A copy of a subscription message with "returnValue": true added, unless it has one: every reply on

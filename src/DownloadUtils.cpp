@@ -210,6 +210,11 @@ std::string getHtml5DatabaseFolderNameForApp(const std::string& appId,std::strin
     return r;
 }
 
+std::string subscriptionKey(unsigned long ticket)
+{
+    return std::to_string(ticket);
+}
+
 pbnjson::JValue downloadProgressJSON(unsigned long ticket, uint64_t received, uint64_t total)
 {
     pbnjson::JValue j = pbnjson::Object();

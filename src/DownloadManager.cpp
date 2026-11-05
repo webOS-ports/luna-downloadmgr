@@ -1196,7 +1196,7 @@ void DownloadManager::resumeMultipleOnAlternateInterface(Connection oldInterface
  */
 int DownloadManager::pauseDownload(const unsigned long ticket,bool allowQueuedToStart)
 {
-    std::map<long,DownloadTask*>::iterator iter = m_ticketMap.find (ticket);
+    std::map<unsigned long,DownloadTask*>::iterator iter = m_ticketMap.find (ticket);
     if (iter == m_ticketMap.end() || iter->second == NULL) {
         //nothing to do..this task didn't exist
         return DOWNLOADMANAGER_PAUSESTATUS_NOSUCHDOWNLOADTASK;
@@ -1255,7 +1255,7 @@ int DownloadManager::pauseDownload(const unsigned long ticket,bool allowQueuedTo
     if (!m_queue.empty() && (m_activeTaskCount < DownloadSettings::instance().maxDownloadManagerConcurrent) && allowQueuedToStart) {
         unsigned long queuedTicket = m_queue.front();
         m_queue.pop_front();
-        std::map<long,DownloadTask*>::iterator queuedIter = m_ticketMap.find(queuedTicket);
+        std::map<unsigned long,DownloadTask*>::iterator queuedIter = m_ticketMap.find(queuedTicket);
         if (queuedIter != m_ticketMap.end() && queuedIter->second != NULL) {
             DownloadTask* nextDownload = queuedIter->second;
             nextDownload->queued = false;
@@ -1277,7 +1277,7 @@ void DownloadManager::pauseAll()
     //run through the whole ticket map and call pause download on all...flag pause() so that it doesn't start queued downloads
     //Can't do this directly because the pause() fn modifies the map I'm iterating on. Do it via intermediate list
     std::list<long> tickets;
-    for (std::map<long,DownloadTask*>::iterator it = m_ticketMap.begin();it != m_ticketMap.end();++it)
+    for (std::map<unsigned long,DownloadTask*>::iterator it = m_ticketMap.begin();it != m_ticketMap.end();++it)
         tickets.push_back(it->first);
     for (std::list<long>::iterator it = tickets.begin();it != tickets.end();++it)
         if (pauseDownload(*it,false) != 1) {
@@ -1292,7 +1292,7 @@ void DownloadManager::pauseAllForInterface(Connection interface)
     //run through the whole ticket map and call pause download on all that match the connection specified...flag pause() so that it doesn't start queued downloads
     //Can't do this directly because the pause() fn modifies the map I'm iterating on. Do it via intermediate list
     std::list<long> tickets;
-    for (std::map<long,DownloadTask*>::iterator it = m_ticketMap.begin();it != m_ticketMap.end();++it) {
+    for (std::map<unsigned long,DownloadTask*>::iterator it = m_ticketMap.begin();it != m_ticketMap.end();++it) {
         if (interface == DownloadManager::connectionName2Id(it->second->connectionName))
             tickets.push_back(it->first);
     }
@@ -1313,7 +1313,7 @@ int DownloadManager::swapToInterface(const unsigned long int ticket,const Connec
         return SWAPTOIF_ERROR_INVALIDIF;
 
     //find the ticket in the map
-    std::map<long,DownloadTask*>::iterator it = m_ticketMap.find(ticket);
+    std::map<unsigned long,DownloadTask*>::iterator it = m_ticketMap.find(ticket);
     if (it == m_ticketMap.end())
         return SWAPTOIF_ERROR_NOSUCHTICKET;
 
@@ -1394,7 +1394,7 @@ int DownloadManager::swapAllActiveToInterface(const Connection newInterface)
         return SWAPALLTOIF_ERROR_INVALIDIF;
 
     bool success = true;
-    for (std::map<long,DownloadTask*>::iterator it = m_ticketMap.begin();it != m_ticketMap.end();++it)
+    for (std::map<unsigned long,DownloadTask*>::iterator it = m_ticketMap.begin();it != m_ticketMap.end();++it)
     {
         if (swapToInterface(it->first,newInterface) != SWAPTOIF_SUCCESS)
             success = false;
@@ -1649,7 +1649,7 @@ size_t DownloadManager::cbWriteEvent (CURL * taskHandle,size_t payloadSize,unsig
     if ((task->lastUpdateAt == 0) || (task->bytesCompleted - task->lastUpdateAt >= task->updateInterval)) {
         LSError lserror;
         LSErrorInit(&lserror);
-        std::string key = ConvertToString<unsigned long>(task->ticket);
+        std::string key = subscriptionKey(task->ticket);
         pbnjson::JValue progress = downloadProgressJSON(task->ticket, task->bytesCompleted, task->bytesTotal);
         std::string response = JUtil::toSimpleString(progress);
 
@@ -1730,7 +1730,7 @@ size_t DownloadManager::cbReadEvent(CURL* taskHandle,size_t payloadSize,unsigned
         LSError lserror;
         LSErrorInit(&lserror);
 
-        std::string key = ConvertToString<long>(task->ticket);
+        std::string key = subscriptionKey(task->ticket);
         pbnjson::JValue progress = uploadProgressJSON(task->ticket, task->bytesCompleted, task->bytesTotal);
         std::string response = JUtil::toSimpleString(progress);
 
@@ -1983,7 +1983,7 @@ void DownloadManager::completed_dl(DownloadTask* task)
     }
 
     LSErrorInit(&lserror);
-    std::string key = ConvertToString<long>(task->ticket).c_str();                  //Prevent CoW  (DEBUGGING)
+    std::string key = subscriptionKey(task->ticket);
 
     std::string payload;
 
@@ -2030,7 +2030,7 @@ void DownloadManager::completed_dl(DownloadTask* task)
     if (!m_queue.empty() && m_activeTaskCount < DownloadSettings::instance().maxDownloadManagerConcurrent) {
         unsigned long queuedTicket = m_queue.front();
         m_queue.pop_front();
-        std::map<long,DownloadTask*>::iterator iter = m_ticketMap.find(queuedTicket);
+        std::map<unsigned long,DownloadTask*>::iterator iter = m_ticketMap.find(queuedTicket);
         if (iter != m_ticketMap.end()) {
             DownloadTask* nextDownload = iter->second;
             nextDownload->queued = false;
@@ -2134,7 +2134,7 @@ bool DownloadManager::cancel( unsigned long ticket )
     LSError lserror;
     LSErrorInit(&lserror);
     //bool LSSubscriptionReply(LSHandle *sh, const char *key,const char *payload, LSError *lserror);
-    std::string key = ConvertToString<long>(task->ticket).c_str();                  //Prevent CoW  (DEBUGGING)
+    std::string key = subscriptionKey(task->ticket);
 
     pbnjson::JValue jsonPayloadObj = task->toJSON();
     std::string historyString = JUtil::toSimpleString(jsonPayloadObj);
@@ -2170,7 +2170,7 @@ bool DownloadManager::cancel( unsigned long ticket )
     if (!m_queue.empty() && (m_activeTaskCount < DownloadSettings::instance().maxDownloadManagerConcurrent)) {
         unsigned long queuedTicket = m_queue.front();
         m_queue.pop_front();
-        std::map<long,DownloadTask*>::iterator iter = m_ticketMap.find(queuedTicket);
+        std::map<unsigned long,DownloadTask*>::iterator iter = m_ticketMap.find(queuedTicket);
         if (iter != m_ticketMap.end()) {
         DownloadTask* nextDownload = iter->second;
         nextDownload->queued = false;
@@ -2193,7 +2193,7 @@ void DownloadManager::cancelFromHistory(DownloadHistoryDb::DownloadHistory& hist
     //alert any subscribers that this task was aborted
     LSError lserror;
     LSErrorInit(&lserror);
-    std::string key = ConvertToString<long>(history.m_ticket);
+    std::string key = subscriptionKey(history.m_ticket);
 
     bool extractError = false;
     std::string uri = "";
@@ -2255,22 +2255,16 @@ void DownloadManager::cancelAll()
     //can't delete from within map iterator because it will alter the map (nor use erase to get next iterator because removing a task is a multi-step procedure)
     // put all the keys into an array, then iterate
 
-    int sz = m_ticketMap.size();
-    long * keyArray = new long[sz];
-    int i=0;
-    std::map<long,DownloadTask *>::iterator iter = m_ticketMap.begin();
-    while (iter != m_ticketMap.end()) {
-        keyArray[i] = iter->first;
-        iter++;
-        ++i;
-    }
+    std::vector<unsigned long> tickets;
+    tickets.reserve(m_ticketMap.size());
+    for (std::map<unsigned long,DownloadTask*>::const_iterator iter = m_ticketMap.begin(); iter != m_ticketMap.end(); ++iter)
+        tickets.push_back(iter->first);
 
-    for (i=0;i<sz;i++) {
-        if (!cancel(keyArray[i])) {
-            LOG_DEBUG ("Function cancel() failed: id:(%ld)", keyArray[i]);
+    for (std::vector<unsigned long>::const_iterator t = tickets.begin(); t != tickets.end(); ++t) {
+        if (!cancel(*t)) {
+            LOG_DEBUG ("Function cancel() failed: id:(%lu)", *t);
         }
     }
-    delete[] keyArray;
 }
 
 /**
@@ -2283,7 +2277,7 @@ void DownloadManager::cancelAll()
 int DownloadManager::getJSONListOfAllDownloads(std::vector<std::string>& downloadList) {
 
     //walk one of the download maps via an iterator
-    std::map<long,DownloadTask*>::iterator iter = m_ticketMap.begin();
+    std::map<unsigned long,DownloadTask*>::iterator iter = m_ticketMap.begin();
     int i =0;
     while (iter != m_ticketMap.end()) {
 
@@ -2408,7 +2402,7 @@ TransferTask * DownloadManager::removeTask_dl(uint32_t ticket) {
     DownloadTask * task=NULL;
 
     //map to a download task...
-    std::map<long,DownloadTask*>::iterator iter = m_ticketMap.find(ticket);
+    std::map<unsigned long,DownloadTask*>::iterator iter = m_ticketMap.find(ticket);
     if (iter == m_ticketMap.end())
     {
         LOG_DEBUG ("%s: DownloadTask for ticket %u not found in ticket map. Function-Exit-Early",__FUNCTION__, ticket);
@@ -2534,7 +2528,7 @@ TransferTask * DownloadManager::getTask(CurlDescriptor& cd)
  */
 bool DownloadManager::getDownloadTaskCopy(unsigned long ticket,DownloadTask& task) {
 
-    std::map<long,DownloadTask*>::iterator iter = m_ticketMap.find(ticket);
+    std::map<unsigned long,DownloadTask*>::iterator iter = m_ticketMap.find(ticket);
     if (iter == m_ticketMap.end())
         return false;   //not found
 
