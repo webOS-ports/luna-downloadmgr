@@ -35,20 +35,6 @@
 static const char* kDownloadSettingsFile = "/etc/palm/downloadManager.conf";
 static const char* kDownloadSettingsFilePlatform = "/etc/palm/downloadManager-platform.conf";
 
-#if 0
-
-#define SETTINGS_TRACE(...) \
-do { \
-    fprintf(stdout, "DownloadSettings:: " ); \
-    fprintf(stdout, __VA_ARGS__); \
-} while (0)
-
-#else
-
-#define SETTINGS_TRACE(...) (void)0
-
-#endif
-
 static bool localSpaceOnFs(const std::string& path,uint64_t& spaceFreeKB,uint64_t& spaceTotalKB,
                             bool useFake = false,uint64_t fakeFreeSize = 0)
 {
