@@ -1094,8 +1094,9 @@ void DownloadManager::filesystemStatusCheck(const uint64_t& freeSpaceKB,const ui
     }
     else
     {
-        pctFull = 100 - static_cast<uint32_t>(std::lround(static_cast<double>(freeSpaceKB) / static_cast<double>(totalSpaceKB) * 100.0));
-        pctFull = (pctFull <= 100 ? pctFull : 100);
+        // more free than total (a filesystem growing under statvfs) is none in use, not a wrap-around
+        const long pctFree = std::lround(static_cast<double>(freeSpaceKB) / static_cast<double>(totalSpaceKB) * 100.0);
+        pctFull = (pctFree >= 100) ? 0 : static_cast<uint32_t>(100 - pctFree);
     }
     LOG_DEBUG ("%s: Percent Full = %u (from free space KB = %" PRIu64 " , total space KB = %" PRIu64 ")",__FUNCTION__,pctFull,freeSpaceKB,totalSpaceKB);
 
