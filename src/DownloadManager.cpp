@@ -2057,10 +2057,10 @@ void DownloadManager::completed_ul(UploadTask* task)
     //post reply on subscription about completion
 
     //TODO: perhaps rewrite the post function to just take a task ptr????
-        if (task->getCURLCode() == CURLE_OK)
-            postUploadStatus(task->id(),task->source(),task->url(),true,task->getCURLCode(),task->getHTTPCode(),task->getUploadResponse(),task->getReplyLocation());
-        else
-            postUploadStatus(task->id(),task->source(),task->url(),false,task->getCURLCode(),task->getHTTPCode(),task->getUploadResponse(),task->getReplyLocation());
+    if (task->getCURLCode() == CURLE_OK)
+        postUploadStatus(task->id(),task->source(),task->url(),true,task->getCURLCode(),task->getHTTPCode(),task->getUploadResponse(),task->getReplyLocation());
+    else
+        postUploadStatus(task->id(),task->source(),task->url(),false,task->getCURLCode(),task->getHTTPCode(),task->getUploadResponse(),task->getReplyLocation());
 
     //remove from upload task map
     m_uploadTaskMap.erase(task->id());
@@ -2432,7 +2432,7 @@ TransferTask * DownloadManager::removeTask_dl(uint32_t ticket) {
 
     if (!task->queued) {
         //remove from glibcurl's inprogress handle pool
-        if (!glibcurl_remove(task->curlDesc.getHandle()) == 0) {
+        if (glibcurl_remove(task->curlDesc.getHandle()) != 0) {
             LOG_DEBUG ("Function glibcurl_remove() failed");
         }
         // only decrement the active task count if this was in fact downloading
