@@ -3057,7 +3057,6 @@ bool DownloadManager::msmEntry(LSMessage* message)
         return false;
 
     pbnjson::JValue payload = JUtil::parse(str, std::string(""));
-    pbnjson::JValue mode;
     if (payload.isNull())
         return false;
 
@@ -3090,15 +3089,13 @@ bool DownloadManager::msmEntry(LSMessage* message)
 
             //LOG_DEBUG ("%s: entering brick mode", __PRETTY_FUNCTION__);
 
-            // are we going into media sync or USB drive mode?
-            mode = payload["enterIMasq"];
-
             m_brickMode = true;
             pauseAll();
         }
     }
 
-    return false;
+    // luna-service2 has no use for a false from a reply callback (callmap.c: "TODO handle false")
+    return true;
 }
 
 bool DownloadManager::msmFscking(LSMessage* message)
