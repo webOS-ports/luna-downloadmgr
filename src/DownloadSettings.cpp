@@ -16,6 +16,8 @@
 
 #include "DownloadSettings.h"
 
+#include <climits>
+
 #include <cstdio>
 #include <cstdlib>
 #include <inttypes.h>
@@ -323,44 +325,43 @@ void DownloadSettings::load( )
 }
 
 
-// Expands "1MB" --> 1048576, "2k" --> 2048, etc.
+// Expands "1MB" --> 1048576, "2k" --> 2048, etc. A value too large for an unsigned long, before or
+// after the suffix, is ULONG_MAX: atol() was undefined past LONG_MAX, and the multiplication wrapped,
+// on armv7 already from "4096M", which came out as 0.
 unsigned long MemStringToBytes( const char* ptr )
 {
-    char number[32];
-    unsigned long r = 0;
-    const char* s= ptr;
-
     if (!ptr)
         return 0;
 
     // isalnum()/isdigit() are only defined for unsigned char values and EOF
     while( *ptr && !isalnum((unsigned char)*ptr) ) // skip whitespace
         ptr++;
-    s=ptr;
 
-    while( isdigit((unsigned char)*ptr) )
+    unsigned long r = 0;
+    bool tooLarge = false;
+    while( isdigit((unsigned char)*ptr) ) {
+        const unsigned long digit = (unsigned long)(*ptr - '0');
+        if (r > (ULONG_MAX - digit) / 10)
+            tooLarge = true;
+        else
+            r = r * 10 + digit;
         ptr++;
+    }
+    if (tooLarge)
+        return ULONG_MAX;
 
-    // A run of 32 or more digits overflowed number[]: strncpy() wrote past the
-    // end of the buffer and number[ptr-s]=0 then stored the terminator further
-    // out still. Such a value cannot fit in an unsigned long anyway, so
-    // truncate the copy to what the buffer holds.
-    size_t digits = (size_t)(ptr - s);
-    if (digits > sizeof(number) - 1)
-        digits = sizeof(number) - 1;
-
-    memcpy( number, s, digits );
-    number[digits]=0;
-
-    r = (unsigned long)atol(number);
+    unsigned long multiplier = 1;
     switch(*ptr)
     {
     case 'M':
-        r *= 1024 * 1024; break;
+        multiplier = 1024ul * 1024ul; break;
     case 'k':
     case 'K':
-        r *= 1024 ; break;
+        multiplier = 1024ul; break;
+    default:
+        break;
     }
-
-    return r;
+    if (r > ULONG_MAX / multiplier)
+        return ULONG_MAX;
+    return r * multiplier;
 }

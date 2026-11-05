@@ -30,8 +30,9 @@ and x86-64, and on both gcc and clang.
 is invisible on aarch64 and x86-64 and silently corrupts the rest of the
 argument list on armv7, which is exactly the bug class this component shipped.
 
-`_FORTIFY_SOURCE` earns its keep on its own. Reintroducing the unbounded
-`strncpy` in `MemStringToBytes()` and running the unit tests gives:
+`_FORTIFY_SOURCE` earns its keep on its own. Putting back the unbounded
+`strncpy` that `MemStringToBytes()` once had (it has no buffer at all now) and
+running the unit tests gave:
 
 ```
 [ RUN      ] MemStringToBytes.LongDigitRunsDoNotOverflowTheBuffer
