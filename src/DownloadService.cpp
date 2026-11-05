@@ -75,7 +75,7 @@ static LSMethod s_methods[]  = {
 
 void DownloadManager::startService()
 {
-    bool result;
+    bool result = false;
     LSError lsError;
     LSErrorInit(&lsError);
 
@@ -156,7 +156,7 @@ void DownloadManager::stopService()
 {
     LSError lsError;
     LSErrorInit(&lsError);
-    bool result;
+    bool result = false;
 
     result = LSUnregister(m_serviceHandle, &lsError);
     if (!result)
@@ -233,7 +233,7 @@ bool DownloadManager::cbDownload(LSHandle* lshandle, LSMessage *msg, void *user_
     std::string overrideTargetFile = "";
     std::string interfaceName = "";
     std::string strInt = "";
-    DownloadManager::Connection conn;
+    DownloadManager::Connection conn = DownloadManager::ANY;
     bool shouldKeepOriginalFilename = false;
     bool canHandlePause = false;
     bool autoResume = true;
@@ -1082,7 +1082,7 @@ Done:
 
 void DownloadManager::filesystemStatusCheck(const uint64_t& freeSpaceKB,const uint64_t& totalSpaceKB, uint32_t *pctFullValue, bool * stopMarkReached)
 {
-    uint32_t pctFull;
+    uint32_t pctFull = 0;
     if (totalSpaceKB == 0)
     {
         // A zero-sized filesystem is not hypothetical: statvfs() reports

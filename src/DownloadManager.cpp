@@ -508,7 +508,7 @@ int DownloadManager::download (const std::string& caller,
 
     //LOG_DEBUG ("File pointer for [%s]/[%s] is %x\n",task->destPath.c_str(),task->destFile.c_str(),(int)(task->fp));
     //allocate a curl handle for this download, and set its parameters
-    CURL * curlHandle;
+    CURL * curlHandle = nullptr;
     curlHandle = curl_easy_init();
     
     if(curlHandle==NULL){
@@ -968,9 +968,9 @@ int DownloadManager::resumeDownload(const DownloadHistoryDb::DownloadHistory& hi
         p_dlTask->connectionName = connectionId2Name (Btpan);
     }
 
-    CURL * curlHandle;
+    CURL * curlHandle = nullptr;
     curlHandle = curl_easy_init();
-    int curlSetOptRc;
+    int curlSetOptRc = 0;
 
     if(curlHandle==NULL){
         LOG_DEBUG ("curlHandle is an nullptr");
@@ -1363,7 +1363,7 @@ int DownloadManager::swapToInterface(const unsigned long int ticket,const Connec
     }
 
     pDltask->connectionName = DownloadManager::connectionId2Name(newInterface);
-    int curlSetOptRc;
+    int curlSetOptRc = 0;
     if (( curlSetOptRc = curl_easy_setopt(pDltask->curlDesc.getHandle(), CURLOPT_INTERFACE,const_cast<char*>(ifaceName.c_str()))) != CURLE_OK )
         LOG_DEBUG ("%s: curl set opt: CURLOPT_INTERFACE to if=[%s] failed [%d]",__FUNCTION__,ifaceName.c_str(),curlSetOptRc);
 
@@ -1517,11 +1517,11 @@ size_t DownloadManager::cbHeader(CURL * taskHandle,size_t headerSize,const char 
 
 void DownloadManager::cbGlib()
 {
-    CURLMsg* msg;
-    int inQueue;
+    CURLMsg* msg = nullptr;
+    int inQueue = 0;
     TransferTask * _task = NULL;
     long l_httpCode = 0;
-    long l_httpConnectCode;
+    long l_httpConnectCode = 0;
     DownloadTask * dl_task = NULL;
     UploadTask * ul_task = NULL;
 //    LOG_DEBUG ("%s Function-Entry",__FUNCTION__);
@@ -1702,7 +1702,7 @@ size_t DownloadManager::cbReadEvent(CURL* taskHandle,size_t payloadSize,unsigned
     DownloadTask * task = _task->p_downloadTask;
 
     //read from file if the fp is not null
-    size_t nwritten;
+    size_t nwritten = 0;
     if (task->fp) {
         nwritten = fread(payload,1,payloadSize,task->fp);
         if ((nwritten < (size_t)payloadSize))
@@ -2445,7 +2445,7 @@ TransferTask * DownloadManager::removeTask_dl(uint32_t ticket) {
     }
 
     //if the curl handle had a header list associated w/ it, free it
-    struct curl_slist * headerList;
+    struct curl_slist * headerList = nullptr;
     if ( (headerList = task->curlDesc.getHeaderList()) != NULL) {
         curl_slist_free_all(headerList);
     }
@@ -2644,7 +2644,7 @@ bool DownloadManager::is1xConnection(const std::string& networkType)
 
 bool DownloadManager::isInterfaceUp(DownloadManager::Connection connectionId)
 {
-    ConnectionStatus status;
+    ConnectionStatus status = InetConnectionUnknownState;
     switch (connectionId)
     {
     case Wired:
@@ -2731,7 +2731,7 @@ void DownloadManager::startupGlibCurl()
     }
 #endif
 
-    CURLMcode retVal;
+    CURLMcode retVal = CURLM_OK;
     retVal = curl_multi_setopt(glibcurl_handle(), CURLMOPT_MAXCONNECTS, 4L);
     if (CURLM_OK != retVal) {
         LOG_WARNING_PAIRS (LOGID_CURL_FAIL_MAXCONNECTION, 1, PMLOGKFV("error code", "%d", retVal),

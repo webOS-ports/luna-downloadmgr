@@ -37,7 +37,7 @@ bool addMimePart(curl_mimepart * part, const std::string& name,
                  const std::string& contentType, const std::string& data,
                  bool dataIsAFilePath)
 {
-    CURLcode rc;
+    CURLcode rc = CURLE_OK;
 
     if ((rc = curl_mime_name(part, name.c_str())) != CURLE_OK) {
         LOG_DEBUG ("curl_mime_name() failed [%d]", rc);

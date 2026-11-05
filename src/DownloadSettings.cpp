@@ -178,8 +178,8 @@ DownloadSettings::~DownloadSettings()
 
 void DownloadSettings::load( )
 {
-    GKeyFile* keyfile;
-    GKeyFileFlags flags;
+    GKeyFile* keyfile = nullptr;
+    GKeyFileFlags flags = G_KEY_FILE_NONE;
     GError* error = 0;
 
     keyfile = g_key_file_new();

@@ -298,7 +298,7 @@ gboolean check(GSource* source) {
 
 gboolean dispatch(GSource* source, GSourceFunc callback,
                   gpointer user_data) {
-  CURLMcode x;
+  CURLMcode x = CURLM_OK;
   int multiCount;
 
   assert(source == &curlSrc->source);
@@ -386,7 +386,7 @@ static GSourceFuncs curlFuncs = {
 /*______________________________________________________________________*/
 
 void glibcurl_init() {
-  int fd;
+  int fd = -1;
   /* Create source object for curl file descriptors, and hook it into the
      default main context. */
   curlSrc = (CurlGSource*)g_source_new(&curlFuncs, sizeof(CurlGSource));
@@ -475,7 +475,7 @@ void glibcurl_cleanup() {
 /*______________________________________________________________________*/
 
 static void registerUnregisterFds() {
-  int fd, fdMax;
+  int fd = -1, fdMax = -1;
 
   FD_ZERO(&curlSrc->fdRead);
   FD_ZERO(&curlSrc->fdWrite);
@@ -580,7 +580,7 @@ gboolean prepare(GSource* source, gint* timeout) {
    is... let's add some more and copy the results of these revents into
    libcurl's fd_sets! */
 gboolean check(GSource* source) {
-  int fd, somethingHappened = 0;
+  int fd = -1, somethingHappened = 0;
 
   assert(source == &curlSrc->source);
 
@@ -633,7 +633,7 @@ gboolean check(GSource* source) {
 
 gboolean dispatch(GSource* source, GSourceFunc callback,
                   gpointer user_data) {
-  CURLMcode x;
+  CURLMcode x = CURLM_OK;
 
   assert(source == &curlSrc->source);
   assert(curlSrc->multiHandle != 0);

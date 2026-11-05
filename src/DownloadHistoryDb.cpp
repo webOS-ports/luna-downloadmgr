@@ -66,7 +66,7 @@ bool DownloadHistoryDb::getMaxKey(unsigned long& maxKey) {
     gchar* queryStr = 0;
 
     bool resultOk=false;
-    int rawData;
+    int rawData = 0;
 
     if (!m_dlDb)
         return false;
@@ -590,7 +590,7 @@ bool DownloadHistoryDb::checkTableConsistency()
     if (!m_dlDb)
         return false;
 
-    int ret;
+    int ret = 0;
     std::string query;
     sqlite3_stmt* statement = 0;
     const char* tail = 0;
