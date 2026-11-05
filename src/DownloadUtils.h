@@ -32,7 +32,11 @@ template <class T> std::string ConvertToString(const T &arg) {
     return(out.str());
 }
 
-bool filecopy (const std::string& srcFile, const std::string& destFile);
+// Opens a file of a transfer: "wb" creates or truncates, "ab" creates or appends, "r+b" and "rb" open
+// one that is there. Never through a symbolic link (O_NOFOLLOW): the daemon runs as root and writes
+// into directories applications share, so a link left under the file's name would have it write
+// wherever the link points. The descriptor is close-on-exec. NULL, with errno set, on failure.
+FILE* openTransferFile(const std::string& path, const char* mode);
 std::string trimWhitespace(const std::string& s,const std::string& drop = "\r\n\t ");
 int splitFileAndPath(const std::string& srcPathAndFile,std::string& pathPart,std::string& filePart);
 int splitFileAndExtension(const std::string& srcFileAndExt,std::string& filePart,std::string& extensionPart);

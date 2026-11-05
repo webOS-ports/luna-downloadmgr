@@ -28,6 +28,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/statfs.h>
+#include <fcntl.h>
+#include <errno.h>
 
 #include <iostream>
 #include <sstream>
@@ -35,18 +37,37 @@
 #include <string>
 #include <algorithm>
 
-bool filecopy (const std::string& srcFile, const std::string& destFile)
+FILE* openTransferFile(const std::string& path, const char* mode)
 {
-    std::ifstream s;
-    std::ofstream d;
-    s.open (srcFile.c_str(), std::ios::binary);
-    d.open (destFile.c_str(), std::ios::binary);
-    if (!s.is_open() || !d.is_open())
-        return false;
-    d << s.rdbuf ();
-    s.close();
-    d.close();
-    return true;
+    int flags = 0;
+    if (mode == NULL) {
+        errno = EINVAL;
+        return NULL;
+    }
+    const std::string m(mode);
+    if (m == "wb")
+        flags = O_WRONLY | O_CREAT | O_TRUNC;
+    else if (m == "ab")
+        flags = O_WRONLY | O_CREAT | O_APPEND;
+    else if (m == "r+b")
+        flags = O_RDWR;
+    else if (m == "rb")
+        flags = O_RDONLY;
+    else {
+        errno = EINVAL;
+        return NULL;
+    }
+    // 0666 as fopen() gives, less the umask.
+    int fd = ::open(path.c_str(), flags | O_NOFOLLOW | O_CLOEXEC, 0666);
+    if (fd == -1)
+        return NULL;
+    FILE* fp = fdopen(fd, mode);
+    if (fp == NULL) {
+        int saved = errno;
+        (void) ::close(fd);
+        errno = saved;
+    }
+    return fp;
 }
 
 bool doesExistOnFilesystem(const char * pathAndFile) {

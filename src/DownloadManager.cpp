@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <vector>
+#include <fcntl.h>
 #include <iostream>
 #include <cstring>
 #include <stdio.h>
@@ -455,7 +456,7 @@ int DownloadManager::download (const std::string& caller,
         //open the file for writing
         if (appendTargetFile)
         {
-            task->fp = fopen(tmpFilePath.c_str(), "r+b");
+            task->fp = openTransferFile(tmpFilePath, "r+b");
 
             if ((task->fp) && (range.second != 0) && (range.second > range.first))
             {
@@ -471,26 +472,24 @@ int DownloadManager::download (const std::string& caller,
             }
         }
         else
-            task->fp = fopen(tmpFilePath.c_str(), "wb");
+            task->fp = openTransferFile(tmpFilePath, "wb");
     }
     else {
         if (task->destPath.at((task->destPath.length()-1)) != '/')
             task->destPath = task->destPath + std::string("/");
 
+        // mkostemp() makes the file 0600 and with O_EXCL, so it never opens one that is there, a link
+        // included; no umask() around it, which is process-wide. Close-on-exec, as openTransferFile().
         std::string templateStr = task->destPath + std::string("fileXXXXXX");
-        auto templateStrLength = templateStr.length() + 1u;
-        char * templateFileName = new char[templateStrLength];
-        strncpy(templateFileName,templateStr.c_str(),templateStrLength);
-        mode_t mask = umask(S_IRWXG | S_IRWXO);
-        int fd = mkstemp(templateFileName);
-        (void) umask(mask);
+        std::vector<char> templateFileName(templateStr.begin(), templateStr.end());
+        templateFileName.push_back('\0');
+        int fd = mkostemp(templateFileName.data(), O_CLOEXEC);
 
         task->destPath = "";
         task->destFile = "";
-        if (splitFileAndPath(std::string(templateFileName),task->destPath,task->destFile) < 0) {
-            LOG_DEBUG ("Wrong file path: %s", templateFileName);
+        if (splitFileAndPath(std::string(templateFileName.data()),task->destPath,task->destFile) < 0) {
+            LOG_DEBUG ("Wrong file path: %s", templateFileName.data());
         }
-        delete[] templateFileName;
 
         if (fd == -1) {
             delete p_ttask;
@@ -898,7 +897,7 @@ int DownloadManager::resumeDownload(const DownloadHistoryDb::DownloadHistory& hi
     else
         wrmode = "ab";
 
-    if ((fp = fopen(destTempFile.c_str(),wrmode.c_str())) == NULL) {
+    if ((fp = openTransferFile(destTempFile,wrmode.c_str())) == NULL) {
         r_err = "cannot open temp file in write/update mode";
         return DOWNLOADMANAGER_RESUMESTATUS_CANNOTACCESSTEMP;
     }
@@ -1952,7 +1951,8 @@ void DownloadManager::completed_dl(DownloadTask* task)
         }
 
         // file sync after rename()
-        FILE *fp = fopen(std::string(task->destPath + task->destFile).c_str(), "r+b");
+        // Read-only is enough for fdatasync().
+        FILE *fp = openTransferFile(task->destPath + task->destFile, "rb");
         if (fp) {
             if (fdatasync(fileno(fp)) != 0) {
                 LOG_DEBUG ("Function fdatasync() failed");

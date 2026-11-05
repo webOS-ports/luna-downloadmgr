@@ -96,6 +96,10 @@ ctest --test-dir build --output-on-failure
   messages, built with pbnjson now, carry exactly what the hand-pasted
   strings did, 32-bit `amount*` fields included.
 
+- `test_transferfile` — `openTransferFile()`, how the daemon opens a
+  download's file: never through a symbolic link, in any mode, the descriptor
+  close-on-exec, and `wb`/`ab`/`r+b`/`rb` doing what `fopen()` did.
+
 `tests/unit/test_support.cpp` supplies `gMainLoop`, which the daemon defines in
 `Main.cpp`. The tests link `LunaDownloadMgrCore`, which is every source *except*
 `Main.cpp`, so there is exactly one `main()` in the binary.

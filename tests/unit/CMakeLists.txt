@@ -24,7 +24,8 @@ set(UNIT_TESTS
     test_fsstatus
     test_jutil
     test_upload
-    test_updates)
+    test_updates
+    test_transferfile)
 
 foreach(t ${UNIT_TESTS})
     add_executable(${t} ${t}.cpp test_support.cpp)
