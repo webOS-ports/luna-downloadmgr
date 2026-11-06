@@ -24,6 +24,7 @@
 #include <iostream>
 #include <vector>
 #include <luna-service2/lunaservice.h>
+#include <pbnjson.hpp>
 
 template <class T> std::string ConvertToString(const T &arg) {
     std::ostringstream      out;
@@ -31,7 +32,11 @@ template <class T> std::string ConvertToString(const T &arg) {
     return(out.str());
 }
 
-bool filecopy (const std::string& srcFile, const std::string& destFile);
+// Opens a file of a transfer: "wb" creates or truncates, "ab" creates or appends, "r+b" and "rb" open
+// one that is there. Never through a symbolic link (O_NOFOLLOW): the daemon runs as root and writes
+// into directories applications share, so a link left under the file's name would have it write
+// wherever the link points. The descriptor is close-on-exec. NULL, with errno set, on failure.
+FILE* openTransferFile(const std::string& path, const char* mode);
 std::string trimWhitespace(const std::string& s,const std::string& drop = "\r\n\t ");
 int splitFileAndPath(const std::string& srcPathAndFile,std::string& pathPart,std::string& filePart);
 int splitFileAndExtension(const std::string& srcFileAndExt,std::string& filePart,std::string& extensionPart);
@@ -39,6 +44,19 @@ int splitStringOnKey(std::vector<std::string>& returnSplitSubstrings,const std::
 bool isNonErrorProcExit(int ecode,int normalCode=0);
 
 std::string getHtml5DatabaseFolderNameForApp(const std::string& appId,std::string appFolderPath);
+
+// What a download or upload subscriber is sent while the transfer runs. amountReceived/amountSent and
+// amountTotal keep their old 32-bit values, for the callers that read those; e_amountReceived,
+// e_amountSent and e_amountTotal carry the full 64-bit counts, as strings.
+// The subscription key of a transfer: its ticket in decimal. Every place that adds or answers a
+// ticket's subscribers uses this, so they always agree on the key.
+std::string subscriptionKey(unsigned long ticket);
+
+pbnjson::JValue downloadProgressJSON(unsigned long ticket, uint64_t received, uint64_t total);
+pbnjson::JValue uploadProgressJSON(unsigned long ticket, uint64_t sent, uint64_t total);
+// A copy of a subscription message with "returnValue": true added, unless it has one: every reply on
+// the bus carries returnValue, and a caller that goes by it took a message without one as a failure.
+pbnjson::JValue subscriptionUpdate(const pbnjson::JValue& payload);
 
 #define ERRMASK_POSTSUBUPDATE    1
 int postSubscriptionUpdate(const std::string& key,const std::string& postMessage,LSHandle * serviceHandle);

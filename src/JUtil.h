@@ -42,10 +42,10 @@ public:
         Error();
 
         //! Return ErrorCode
-        ErrorCode code();
+        ErrorCode code() const;
 
         //! Return Error Detail string
-        std::string detail();
+        const std::string& detail() const;
 
     private:
         friend class JUtil;
@@ -89,7 +89,7 @@ protected:
     JUtil();
 
     //! Destructor
-    ~JUtil();
+    ~JUtil() override;
 
 private:
     std::map< std::string, pbnjson::JSchema > m_mapSchema;

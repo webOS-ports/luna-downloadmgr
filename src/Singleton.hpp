@@ -83,9 +83,15 @@ private:
     class TrackerImpl : public SingletonNS::Tracker
     {
     public:
-        TrackerImpl(T* _p) : m_p(_p) {}
-        ~TrackerImpl()
+        explicit TrackerImpl(T* _p) : m_p(_p) {}
+        // Owns m_p: a copy would delete the instance twice.
+        TrackerImpl(const TrackerImpl&) = delete;
+        TrackerImpl& operator=(const TrackerImpl&) = delete;
+        ~TrackerImpl() override
         {
+            // The copy constructor and operator= are deleted above; cppcheck does not see that in
+            // a template.
+            // cppcheck-suppress noCopyConstructor
             delete m_p;
             Singleton<T>::_instance = 0;
         }
@@ -97,10 +103,10 @@ private:
     class TrackerFinder
     {
     public:
-        TrackerFinder(T *_p) : m_p(_p) {}
-        bool operator()(SingletonNS::Tracker *p)
+        explicit TrackerFinder(T *_p) : m_p(_p) {}
+        bool operator()(const SingletonNS::Tracker *p) const
         {
-            TrackerImpl<T> *pImpl = static_cast< TrackerImpl<T>* >(p);
+            const TrackerImpl<T> *pImpl = static_cast< const TrackerImpl<T>* >(p);
             if (!pImpl) return false;
             return (pImpl->m_p == m_p) ? true : false;
         }

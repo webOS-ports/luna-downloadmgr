@@ -39,6 +39,10 @@
 #   clang        --analyze
 #   warnings     -Wall -Wextra -Wshadow -Wformat=2 per architecture
 
+# Flag lists ($TUNE, $INCLUDES, $PKGFLAGS, $SOURCES, ...) are split into words
+# on purpose.
+# shellcheck disable=SC2086
+
 set -u
 
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -108,8 +112,11 @@ note() { printf '    %s\n' "$*"; }
 # ------------------------------------------------------------------ toolchain
 
 CXX="g++"
-CC="gcc"
-[ -n "$CROSS" ] && { CXX="${CROSS}g++"; CC="${CROSS}gcc"; }
+[ -n "$CROSS" ] && CXX="${CROSS}g++"
+# clang parses for the target, not the build host: the triple is the
+# --cross prefix without its trailing "-" (arm-webos-linux-gnueabi- ...).
+TARGET=""
+[ -n "$CROSS" ] && TARGET="--target=$(basename "${CROSS%-}")"
 
 PKGFLAGS=""
 if [ -n "$SYSROOT" ]; then
@@ -149,17 +156,18 @@ SOURCES="$(ls "$SRC_DIR"/src/*.cpp "$SRC_DIR"/src/*.c 2>/dev/null)"
 
 if want cppcheck && command -v cppcheck >/dev/null 2>&1; then
     log "cppcheck (exhaustive)"
-    cppcheck --enable=all --inconclusive --check-level=exhaustive \
+    cppcheck --enable=all --inconclusive --check-level=exhaustive --inline-suppr \
              --std=c++17 --language=c++ \
              --suppress=missingIncludeSystem --suppress=checkersReport \
              --suppress=unusedFunction \
              $INCLUDES \
              --template='{file}:{line}: [{severity}/{id}] {message}' \
              "$SRC_DIR/src" > "$OUT_DIR/cppcheck.txt" 2>&1
-    # style/performance noise is not what this gate is for
-    n="$(grep -cE '\[(error|warning)/' "$OUT_DIR/cppcheck.txt" || true)"
-    note "$n error/warning findings -> $OUT_DIR/cppcheck.txt"
-    grep -E '\[(error|warning)/' "$OUT_DIR/cppcheck.txt" | sed 's|^|    |' | head -40
+    # every severity counts, style and performance included: the tree is clean
+    # and stays that way, with any exception suppressed inline next to its reason
+    n="$(grep -cE '\[(error|warning|style|performance|portability|information)/' "$OUT_DIR/cppcheck.txt" || true)"
+    note "$n findings -> $OUT_DIR/cppcheck.txt"
+    grep -E '\[[a-z]+/' "$OUT_DIR/cppcheck.txt" | sed 's|^|    |' | head -40
     FINDINGS=$((FINDINGS + n))
 elif want cppcheck; then
     note "cppcheck not installed, skipping"
@@ -186,8 +194,8 @@ if want tidy && command -v clang-tidy >/dev/null 2>&1 && [ -n "$SYSROOT" ]; then
         for f in $SOURCES; do
             [ $first -eq 1 ] || printf ',\n'
             first=0
-            printf '{"directory":"%s","file":"%s","command":"clang++ --sysroot=%s %s -x c++ -std=gnu++17 %s %s %s -c %s -o /dev/null"}' \
-                   "$SRC_DIR" "$f" "$SYSROOT" "$CXXINC" "$BASE_DEFS" "$INCLUDES" "$PKGFLAGS" "$f"
+            printf '{"directory":"%s","file":"%s","command":"clang++ %s --sysroot=%s %s %s -x c++ -std=gnu++17 %s %s %s -c %s -o /dev/null"}' \
+                   "$SRC_DIR" "$f" "$TARGET" "$SYSROOT" "$TUNE" "$CXXINC" "$BASE_DEFS" "$INCLUDES" "$PKGFLAGS" "$f"
         done
         printf '\n]\n'
     } > "$CDB/compile_commands.json"
@@ -195,10 +203,14 @@ if want tidy && command -v clang-tidy >/dev/null 2>&1 && [ -n "$SYSROOT" ]; then
     clang-tidy -p "$CDB" --quiet \
         --checks='-*,bugprone-*,cert-*,clang-analyzer-*,concurrency-*,misc-*,performance-*,portability-*,readability-misleading-indentation,cppcoreguidelines-init-variables,cppcoreguidelines-slicing,cppcoreguidelines-virtual-class-destructor,-misc-include-cleaner,-misc-unused-parameters,-misc-non-private-member-variables-in-classes,-misc-use-anonymous-namespace,-misc-const-correctness,-misc-use-internal-linkage,-bugprone-easily-swappable-parameters,-bugprone-narrowing-conversions,-bugprone-assignment-in-if-condition,-bugprone-branch-clone,-bugprone-implicit-widening-of-multiplication-result,-performance-unnecessary-value-param,-performance-avoid-endl' \
         $SOURCES > "$OUT_DIR/clang-tidy.txt" 2>"$OUT_DIR/clang-tidy.err"
-    n="$(grep -c 'warning:' "$OUT_DIR/clang-tidy.txt" || true)"
-    note "$n findings -> $OUT_DIR/clang-tidy.txt"
-    grep 'warning:' "$OUT_DIR/clang-tidy.txt" | grep -v "$SYSROOT" | sed 's|^|    |' | head -40
-    FINDINGS=$((FINDINGS + n))
+    # Reports located in the sysroot (boost's headers) are third-party:
+    # listed, not counted. A file clang could not parse counts as a finding.
+    n="$(grep -E 'warning:|error:' "$OUT_DIR/clang-tidy.txt" | grep -vc "^$SYSROOT" || true)"
+    t="$(grep -E 'warning:|error:' "$OUT_DIR/clang-tidy.txt" | grep -c "^$SYSROOT" || true)"
+    e="$(grep -c '^Error while processing' "$OUT_DIR/clang-tidy.err" || true)"
+    note "$n findings in our code, $t in third-party headers, $e files not parsed -> $OUT_DIR/clang-tidy.txt"
+    grep -E 'warning:|error:' "$OUT_DIR/clang-tidy.txt" | grep -v "^$SYSROOT" | sed 's|^|    |' | head -40
+    FINDINGS=$((FINDINGS + n + e))
 elif want tidy; then
     note "clang-tidy needs --sysroot and clang-tidy installed, skipping"
 fi
@@ -208,13 +220,24 @@ fi
 if want gccanalyzer && [ -n "$SYSROOT" ] && command -v "$CXX" >/dev/null 2>&1; then
     log "gcc -fanalyzer ($ARCH)"
     : > "$OUT_DIR/gcc-analyzer.txt"
-    for f in $SOURCES; do
-        "$CXX" --sysroot="$SYSROOT" $TUNE -x c++ -std=gnu++17 -fanalyzer \
-               -fsyntax-only $BASE_DEFS $INCLUDES $PKGFLAGS "$f" \
-               >> "$OUT_DIR/gcc-analyzer.txt" 2>&1
+    # -fanalyzer only runs when code is generated, so each file is compiled
+    # for real (to /dev/null), at -O0 and -O2. -Wanalyzer-use-of-uninitialized-value
+    # is off: for C++ it reports every returned std::string or pbnjson::JValue
+    # (the return slot is filled by the callee's constructor, which the
+    # analyzer does not follow); see tests/README.md.
+    for opt in -O0 -O2; do
+        for f in $SOURCES; do
+            "$CXX" --sysroot="$SYSROOT" $TUNE -x c++ -std=gnu++17 $opt -fanalyzer \
+                   -Wno-analyzer-use-of-uninitialized-value \
+                   -c -o /dev/null $BASE_DEFS $INCLUDES $PKGFLAGS "$f" \
+                   >> "$OUT_DIR/gcc-analyzer.txt" 2>&1
+        done
     done
-    n="$(grep -c 'warning:.*-Wanalyzer' "$OUT_DIR/gcc-analyzer.txt" || true)"
-    note "$n analyzer findings -> $OUT_DIR/gcc-analyzer.txt"
+    # Reports located in the sysroot (boost::regex, libstdc++) are third-party:
+    # listed, not counted. See tests/README.md.
+    n="$(grep 'warning:.*-Wanalyzer' "$OUT_DIR/gcc-analyzer.txt" | grep -vc "^$SYSROOT" || true)"
+    t="$(grep 'warning:.*-Wanalyzer' "$OUT_DIR/gcc-analyzer.txt" | grep -c "^$SYSROOT" || true)"
+    note "$n analyzer findings in our code, $t in third-party headers -> $OUT_DIR/gcc-analyzer.txt"
     grep 'warning:.*-Wanalyzer' "$OUT_DIR/gcc-analyzer.txt" | sed 's|^|    |' | head -20
     FINDINGS=$((FINDINGS + n))
 elif want gccanalyzer; then
@@ -234,14 +257,18 @@ if want clanganalyzer && [ -n "$SYSROOT" ] && command -v clang++ >/dev/null 2>&1
     done
     : > "$OUT_DIR/clang-analyzer.txt"
     for f in $SOURCES; do
-        clang++ --sysroot="$SYSROOT" $CXXINC --analyze --analyzer-output text \
+        clang++ $TARGET --sysroot="$SYSROOT" $TUNE $CXXINC --analyze --analyzer-output text \
+                -Xclang -analyzer-checker=alpha.core,alpha.unix,alpha.security,alpha.cplusplus \
+                -Xclang -analyzer-config -Xclang aggressive-binary-operation-simplification=true \
                 -x c++ -std=gnu++17 $BASE_DEFS $INCLUDES $PKGFLAGS "$f" -o /dev/null \
                 >> "$OUT_DIR/clang-analyzer.txt" 2>&1
     done
-    n="$(grep -c 'warning:' "$OUT_DIR/clang-analyzer.txt" || true)"
-    note "$n findings -> $OUT_DIR/clang-analyzer.txt"
-    grep 'warning:' "$OUT_DIR/clang-analyzer.txt" | grep -v "$SYSROOT" | sed 's|^|    |' | head -20
-    FINDINGS=$((FINDINGS + n))
+    # A file that did not parse was not analysed: that counts too.
+    n="$(grep -E 'warning:|error:' "$OUT_DIR/clang-analyzer.txt" | grep -vc "^$SYSROOT" || true)"
+    t="$(grep -E 'warning:|error:' "$OUT_DIR/clang-analyzer.txt" | grep -c "^$SYSROOT" || true)"
+    note "$n findings in our code, $t in third-party headers -> $OUT_DIR/clang-analyzer.txt"
+    grep -E 'warning:|error:' "$OUT_DIR/clang-analyzer.txt" | sed 's|^|    |' | head -20
+    FINDINGS=$((FINDINGS + n + t))
 elif want clanganalyzer; then
     note "clang --analyze needs --sysroot, skipping"
 fi

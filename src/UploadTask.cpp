@@ -37,7 +37,7 @@ bool addMimePart(curl_mimepart * part, const std::string& name,
                  const std::string& contentType, const std::string& data,
                  bool dataIsAFilePath)
 {
-    CURLcode rc;
+    CURLcode rc = CURLE_OK;
 
     if ((rc = curl_mime_name(part, name.c_str())) != CURLE_OK) {
         LOG_DEBUG ("curl_mime_name() failed [%d]", rc);
@@ -67,8 +67,8 @@ bool addMimePart(curl_mimepart * part, const std::string& name,
 }   // namespace
 
 //static
-UploadTask * UploadTask::newFileUploadTask(const std::string& targeturl,const std::string& sourcefile,const std::string& filemimepartlabel,std::vector<PostItem>& postparts,
-         std::vector<std::string>& httpheaders,std::vector<kvpair>& cookies,const std::string& contenttype)
+UploadTask * UploadTask::newFileUploadTask(const std::string& targeturl,const std::string& sourcefile,const std::string& filemimepartlabel,const std::vector<PostItem>& postparts,
+         std::vector<std::string>& httpheaders,const std::vector<kvpair>& cookies,const std::string& contenttype)
 {
     // set up the curl handle
     CURL * p_curl = curl_easy_init();
@@ -100,7 +100,7 @@ UploadTask * UploadTask::newFileUploadTask(const std::string& targeturl,const st
         return NULL;
     }
 
-    for (std::vector<PostItem>::iterator it = postparts.begin(); it != postparts.end();++it) {
+    for (std::vector<PostItem>::const_iterator it = postparts.begin(); it != postparts.end();++it) {
         if (((*it)._type != PostItem::Value) && ((*it)._type != PostItem::File))
             continue;
 
@@ -137,7 +137,7 @@ UploadTask * UploadTask::newFileUploadTask(const std::string& targeturl,const st
     //set all the cookies
     // curl_easy_setopt(easyhandle, CURLOPT_COOKIE, "name1=var1; name2=var2;");
     std::string cookiestr;
-    for (std::vector<kvpair>::iterator it = cookies.begin(); it != cookies.end();++it) {
+    for (std::vector<kvpair>::const_iterator it = cookies.begin(); it != cookies.end();++it) {
         cookiestr += it->first + std::string("=") + it->second + std::string("; ");
     }
     if ((rc = curl_easy_setopt(p_curl, CURLOPT_COOKIE,cookiestr.c_str())) != CURLE_OK)
@@ -222,7 +222,7 @@ UploadTask::UploadTask()
 }
 
 UploadTask::UploadTask(const std::string& url,const std::string& file,const std::string& data,uint32_t id,
-        std::vector<PostItem> * postparts,const std::string& contenttype,CURL * p_curl)
+        const std::vector<PostItem> * postparts,const std::string& contenttype,CURL * p_curl)
 :   m_url(url) ,
     m_sourceFile(file) ,
     m_sourceData(data) ,

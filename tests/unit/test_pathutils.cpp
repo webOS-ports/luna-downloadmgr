@@ -108,7 +108,7 @@ TEST(FileSizeOnFilesystem, ReportsSizesWiderThanInt)
     const char* path = "ldm_sparse_test.bin";
     const int64_t size = 3LL * 1024 * 1024 * 1024 + 1234;
 
-    FILE* fp = fopen(path, "wb");
+    FILE* fp = fopen(path, "wb");  // flawfinder: ignore - test file of its own in the build tree
     ASSERT_NE(static_cast<FILE*>(NULL), fp);
     ASSERT_EQ(0, fseeko(fp, static_cast<off_t>(size) - 1, SEEK_SET));
     ASSERT_EQ(1u, fwrite("", 1, 1, fp));

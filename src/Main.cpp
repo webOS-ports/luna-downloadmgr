@@ -23,7 +23,9 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <glib.h>
+#include <glib-unix.h>
 #include <malloc.h>
+#include <signal.h>
 
 //#define PRINT_MALLOC_STATS
 
@@ -37,19 +39,24 @@ GMainLoop* gMainLoop = NULL;
 }
 #endif
 
-static void handle_sigterm(int signal)
+// Called from the main loop, not in the signal handler: g_unix_signal_add() has glib catch SIGTERM
+// and dispatch it as a source. The handler signal() installed called PmLog and g_main_loop_quit(),
+// neither of which is async-signal-safe, and a SIGTERM before gMainLoop existed quit a NULL loop.
+static gboolean onSigterm(gpointer)
 {
     LOG_DEBUG("SIGTERM hit! exiting main loop.");
     g_main_loop_quit(gMainLoop);
+    return G_SOURCE_REMOVE;
 }
 
 int main( int argc, char** argv)
 {
     LOG_DEBUG ("LunaDownloadMgr STARTING");
 
-    signal(SIGTERM, handle_sigterm);
-
     gMainLoop = g_main_loop_new (NULL, FALSE);
+    if (g_unix_signal_add(SIGTERM, onSigterm, NULL) == 0) {
+        LOG_DEBUG ("Function g_unix_signal_add() failed");
+    }
     LOG_DEBUG ("%s:%d gMainLoop = %p", __FILE__, __LINE__, gMainLoop);
 
     //g_thread_init is deprecated since glib 2.0
@@ -63,7 +70,8 @@ int main( int argc, char** argv)
 
 #ifdef DYNAMIC_SERVICE
     // Quits GMainLoop if there are no activity over time interval
-    if (g_timeout_add_seconds(WATCHDOG_TIMEOUT, watchdog_handler, static_cast<gpointer>(&DownloadManager::instance())) < 0) {
+    // A source id is unsigned and 0 when it fails; it was compared with < 0, which is never true.
+    if (g_timeout_add_seconds(WATCHDOG_TIMEOUT, watchdog_handler, static_cast<gpointer>(&DownloadManager::instance())) == 0) {
         LOG_DEBUG ("Function g_timeout_add_seconds() failed");
     }
 #endif

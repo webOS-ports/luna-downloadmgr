@@ -67,7 +67,7 @@ struct OneShotServer
 
     std::string url(const char *path = "/upload") const
     {
-        char buf[64];
+        char buf[64];  // flawfinder: ignore - snprintf() is bounded by sizeof(buf)
         snprintf(buf, sizeof(buf), "http://127.0.0.1:%u%s", (unsigned) port, path);
         return buf;
     }
@@ -81,7 +81,7 @@ private:
 
         // Read until the client stops sending. libcurl closes its side after
         // the body because we answer with Connection: close.
-        char buf[8192];
+        char buf[8192];  // flawfinder: ignore - recv() is bounded by sizeof(buf)
         ssize_t n;
         size_t headerEnd = std::string::npos;
         size_t contentLength = 0;
@@ -113,7 +113,7 @@ private:
 std::string writeTempFile(const std::string &name, const std::string &body)
 {
     std::string path = "./" + name;
-    FILE *f = fopen(path.c_str(), "wb");
+    FILE *f = fopen(path.c_str(), "wb");  // flawfinder: ignore - test file of its own in the build tree
     if (!f) return std::string();
     fwrite(body.data(), 1, body.size(), f);
     fclose(f);

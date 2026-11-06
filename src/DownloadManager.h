@@ -81,7 +81,7 @@ class DownloadManager: public Singleton<DownloadManager>
 {
 public:
 
-    unsigned long generateNewTicket();
+    static unsigned long generateNewTicket();
 
     enum ConnectionStatus {
             InetConnectionUnknownState,
@@ -144,11 +144,11 @@ public:
     uint32_t uploadPOSTFile(const std::string& file,
             const std::string& url,
             const std::string& filePostLabel,
-            std::vector<PostItem>& postHeaders,
+            const std::vector<PostItem>& postHeaders,
             std::vector<std::string>& httpHeaders,
-            std::vector<kvpair>& cookies,
+            const std::vector<kvpair>& cookies,
             const std::string& contentType);
-    uint32_t uploadPOSTBuffer(const std::string& file,
+    uint32_t uploadPOSTBuffer(const std::string& buffer,
             const std::string& url,
             std::vector<std::string>& httpHeaders,
             const std::string& contentType);
@@ -157,7 +157,7 @@ public:
     void cancelFromHistory(DownloadHistoryDb::DownloadHistory& history);
     void cancelAll();
 
-    int getJSONListOfAllDownloads(std::vector<std::string>& list);
+    int getJSONListOfAllDownloads(std::vector<std::string>& downloadList);
 
     bool getDownloadTaskCopy(unsigned long ticket,DownloadTask& task);
     bool getDownloadHistory(unsigned long ticket,std::string& r_caller,std::string& r_interface, std::string& r_state,std::string& r_history);
@@ -166,44 +166,44 @@ public:
     int clearDownloadHistory();
     int clearDownloadHistoryByGlobbedOwner(const std::string& caller);
 
-    std::string getDownloadPath();
+    const std::string& getDownloadPath() const;
     std::string getAltIpkDownloadPath();
 
     static DownloadManager::Connection connectionName2Id(const std::string& name);
     static std::string connectionId2Name(const DownloadManager::Connection id);
     static bool is1xConnection(const std::string& networkType);
-    bool isInterfaceUp(DownloadManager::Connection connectionId);
+    bool isInterfaceUp(DownloadManager::Connection connectionId) const;
 
     static bool spaceCheckOnFs(const std::string& path,uint64_t thresholdKB=1024);
     static bool spaceOnFs(const std::string& path,uint64_t& spaceFreeKB,uint64_t& spaceTotalKB);
 
-    unsigned int howManyTasksActive();
+    unsigned int howManyTasksActive() const;
     int          howManyTasksInterrupted();
 
-    bool    currentlyInBrickMode() { return m_brickMode; }
+    bool    currentlyInBrickMode() const { return m_brickMode; }
 
-    bool postDownloadUpdate (const std::string& owner, const unsigned long ticket, const std::string& payload);
+    bool postDownloadUpdate (const std::string& owner, const unsigned long ticket, const pbnjson::JValue& payload);
 
     friend class UploadTask;
 
     // download specific
-    static bool cbDeleteDownloadedFile(LSHandle* lshandle, LSMessage *message,void *user_data);
-    static bool cbDownloadStatusQuery(LSHandle* lshandle, LSMessage *message,void *user_data);
-    static bool cbDownload(LSHandle* lshandle, LSMessage *message,void *user_data);
+    static bool cbDeleteDownloadedFile(LSHandle* lshandle, LSMessage *msg,void *user_data);
+    static bool cbDownloadStatusQuery(LSHandle* lshandle, LSMessage *msg,void *user_data);
+    static bool cbDownload(LSHandle* lshandle, LSMessage *msg,void *user_data);
     static bool cbDownloadAndLaunch(LSHandle* lshandle, LSMessage *message,void *user_data);
     static bool cbResumeDownload(LSHandle* lshandle, LSMessage *message,void *user_data);
     static bool cbPauseDownload(LSHandle* lshandle, LSMessage *message,void *user_data);
-    static bool cbCancelDownload(LSHandle* lshandle, LSMessage *message,void *user_data);
-    static bool cbCancelAllDownloads(LSHandle* lshandle, LSMessage *message,void *user_data);
+    static bool cbCancelDownload(LSHandle* lshandle, LSMessage *msg,void *user_data);
+    static bool cbCancelAllDownloads(LSHandle* lshandle, LSMessage *msg,void *user_data);
     static bool cbListPendingDownloads(LSHandle * lshandle,LSMessage *msg,void * user_data);
     static bool cbGetAllHistory(LSHandle * lshandle,LSMessage *msg, void * user_data);
     static bool cbClearDownloadHistory(LSHandle * lshandle,LSMessage *msg,void * user_data);
     static bool cbFsStatusCheck(LSHandle * lshandle,LSMessage *msg,void * user_data);
 
-    void filesystemStatusCheck(const uint64_t& spaceFreeKB,const uint64_t& spaceTotalKB,uint32_t *pctFullValue = 0, bool * stopMarkReached = 0);
+    static void filesystemStatusCheck(const uint64_t& freeSpaceKB,const uint64_t& totalSpaceKB,uint32_t *pctFullValue = 0, bool * stopMarkReached = 0);
 
     // upload specific
-    static bool cbUpload(LSHandle* lshandle, LSMessage *message,void *user_data);
+    static bool cbUpload(LSHandle* lshandle, LSMessage *msg,void *user_data);
     //static bool cbUploadStatusQuery(LSHandle* lshandle, LSMessage *message,void *user_data);
     //static bool cbCancelUpload(LSHandle* lshandle, LSMessage *message,void *user_data);
 
@@ -212,15 +212,15 @@ public:
     static bool cbConnectionManagerServiceState(LSHandle* lshandle, LSMessage *message,void *user_data);
     static bool cbConnectionManagerConnectionStatus(LSHandle* lshandle, LSMessage *message,void *user_data);
 
-    static bool cbSleepServiceState(LSHandle* lshandle, LSMessage *message,void *user_data);
-    static bool cbSleepServiceRegisterForWakeLock(LSHandle* lshandle, LSMessage *message,void *user_data);
+    static bool cbSleepServiceState(LSHandle* lshandle, LSMessage *msg,void *user_data);
+    static bool cbSleepServiceRegisterForWakeLock(LSHandle* lshandle, LSMessage *msg,void *user_data);
     static bool cbSleepServiceWakeLockRegister(LSHandle* lshandle, LSMessage *msg, void *user_data);
 
-    bool is1xConnection();
-    bool is1xDownloadAllowed();
-    bool canDownloadNow();
+    bool is1xConnection() const;
+    static bool is1xDownloadAllowed();
+    bool canDownloadNow() const;
     static bool cbConnectionType(LSHandle* lshandle, LSMessage *message,void *user_data);
-    static gboolean     cbIdleSourceTransfersDrained (gpointer userData);
+    static gboolean     cbIdleSourceTransfersDrained (gpointer data);
     // msm
 
     static bool msmAvailCallback(LSHandle* handle, LSMessage* message, void* ctxt);
@@ -258,7 +258,7 @@ private:
 
     std::list<unsigned long> m_queue;
     std::map<CurlDescriptor,TransferTask*> m_handleMap;
-    std::map<long,DownloadTask*> m_ticketMap;
+    std::map<unsigned long,DownloadTask*> m_ticketMap;
 
     std::map<uint32_t,UploadTask *> m_uploadTaskMap;
 
@@ -266,14 +266,14 @@ private:
 
     void completed(TransferTask* );
     void completed_dl(DownloadTask*);
-    void completed_ul(UploadTask*);
+    void completed_ul(const UploadTask*);
 
     void cbGlib ();
     size_t cbReadEvent (CURL* taskHandle, size_t payloadSize=0, unsigned char * payload=NULL);
-    size_t cbWriteEvent (CURL* taskHandle, size_t payloadSize=0, unsigned char * payload=NULL);
+    size_t cbWriteEvent (CURL* taskHandle, size_t payloadSize=0, const unsigned char * payload=NULL);
 
     size_t cbHeader(CURL* taskHandle, size_t headerSize, const char * headerText);
-    int cbSetSocketOptions(void *clientp,curl_socket_t curlfd,curlsocktype purpose);
+    static int cbSetSocketOptions(void *clientp,curl_socket_t curlfd,curlsocktype purpose);
 
     static size_t cbCurlReadFromFile(void* ptr, size_t size, size_t nmemb, void *stream);
     static size_t cbCurlWriteToFile(void* ptr, size_t size, size_t nmemb, void *stream);
@@ -283,7 +283,7 @@ private:
 
     static void cbGlibcurl(void* data);
 
-    void postUploadStatus(UploadTask * pUlTask);
+    void postUploadStatus(const UploadTask * pUlTask);
     void postUploadStatus(uint32_t id,const std::string& sourceFile,const std::string& url,bool completed,
                 CURLcode curlCode,uint32_t httpCode,const std::string& responseString, const std::string& location);
 
@@ -298,7 +298,7 @@ private:
     bool m_glibCurlInitialized;
     GMainLoop* m_mainLoop;
 
-    std::string generateTempPath( const std::string& resourceName );
+    std::string generateTempPath( const std::string& resourceName ) const;
     std::string generateAltIpkgTempPath( const std::string& resourceName);
     static bool isValidOverridePath(const std::string& path);
     static bool isValidOverrideFile(const std::string& file);
@@ -319,7 +319,10 @@ private:
     void shutdownGlibCurl();
 
     DownloadManager();
-    ~DownloadManager();
+    ~DownloadManager() override;
+    // One per process, owning the history db, the curl handles and the bus handle.
+    DownloadManager(const DownloadManager&) = delete;
+    DownloadManager& operator=(const DownloadManager&) = delete;
 
     static unsigned long s_ticketGenerator;
 

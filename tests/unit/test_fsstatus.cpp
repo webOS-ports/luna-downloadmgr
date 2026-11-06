@@ -45,6 +45,7 @@ TEST(FilesystemStatusCheck, NeverReportsMoreThanAHundred)
 {
     // free > total is nonsense but observable while a filesystem is resizing
     EXPECT_LE(pctFullFor(2000, 1000), 100u);
+    EXPECT_EQ(0u, pctFullFor(2000, 1000));     // all of it free, none in use
 }
 
 TEST(FilesystemStatusCheck, HandlesSizesBeyondThirtyTwoBits)

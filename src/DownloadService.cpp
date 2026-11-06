@@ -26,6 +26,7 @@
 #include "DownloadUtils.h"
 #include "DownloadSettings.h"
 
+#include <cmath>
 #include <vector>
 #include <iostream>
 #include <cstring>
@@ -74,7 +75,7 @@ static LSMethod s_methods[]  = {
 
 void DownloadManager::startService()
 {
-    bool result;
+    bool result = false;
     LSError lsError;
     LSErrorInit(&lsError);
 
@@ -142,7 +143,9 @@ Done:
     if (!result) {
         LOG_DEBUG ("Failed in %s: %s - restarting",__FUNCTION__, lsError.message);
         LSErrorFree(&lsError);
-        exit(0);
+        // startService() runs from init(), before the main loop and so before glibcurl's select
+        // thread exists: exit() has no other thread to race.
+        exit(0);  // NOLINT(concurrency-mt-unsafe)
     }
     else {
         LOG_DEBUG("DownloadManager on service bus");
@@ -153,7 +156,7 @@ void DownloadManager::stopService()
 {
     LSError lsError;
     LSErrorInit(&lsError);
-    bool result;
+    bool result = false;
 
     result = LSUnregister(m_serviceHandle, &lsError);
     if (!result)
@@ -230,7 +233,7 @@ bool DownloadManager::cbDownload(LSHandle* lshandle, LSMessage *msg, void *user_
     std::string overrideTargetFile = "";
     std::string interfaceName = "";
     std::string strInt = "";
-    DownloadManager::Connection conn;
+    DownloadManager::Connection conn = DownloadManager::ANY;
     bool shouldKeepOriginalFilename = false;
     bool canHandlePause = false;
     bool autoResume = true;
@@ -342,7 +345,7 @@ bool DownloadManager::cbDownload(LSHandle* lshandle, LSMessage *msg, void *user_
     }
 
     success=true;
-    key = ConvertToString<long>(ticket_id);
+    key = subscriptionKey(ticket_id);
 
     if (LSMessageIsSubscription(msg)) {
 
@@ -449,7 +452,7 @@ bool DownloadManager::cbResumeDownload(LSHandle* lshandle, LSMessage *message,vo
     authToken = root["authToken"].asString();
     deviceId = root["deviceId"].asString();
 
-    key = ConvertToString<long>(ticket);
+    key = subscriptionKey(static_cast<unsigned long>(ticket));
 
     if (LSMessageIsSubscription(message)) {
 
@@ -566,6 +569,8 @@ bool DownloadManager::cbPauseDownload(LSHandle* lshandle, LSMessage *message,voi
     case DOWNLOADMANAGER_PAUSESTATUS_NOSUCHDOWNLOADTASK:
         errorCode = ConvertToString<int>(rc);
         errorText = "Ticket provided does not correspond to a downloading transfer";
+        break;
+    default:
         break;
     }
 
@@ -1048,6 +1053,8 @@ bool DownloadManager::cbClearDownloadHistory(LSHandle * lshandle,LSMessage *msg,
         case DOWNLOADHISTORYDB_HISTORYSTATUS_NOTINHISTORY:
             errorText = std::string("Fail to find owner");
             break;
+        default:
+            break;
     }
 
 Done:
@@ -1075,7 +1082,7 @@ Done:
 
 void DownloadManager::filesystemStatusCheck(const uint64_t& freeSpaceKB,const uint64_t& totalSpaceKB, uint32_t *pctFullValue, bool * stopMarkReached)
 {
-    uint32_t pctFull;
+    uint32_t pctFull = 0;
     if (totalSpaceKB == 0)
     {
         // A zero-sized filesystem is not hypothetical: statvfs() reports
@@ -1087,8 +1094,9 @@ void DownloadManager::filesystemStatusCheck(const uint64_t& freeSpaceKB,const ui
     }
     else
     {
-        pctFull = 100 - (uint32_t)(0.5 + ((double)freeSpaceKB / (double)totalSpaceKB) * (double)100.0);
-        pctFull = (pctFull <= 100 ? pctFull : 100);
+        // more free than total (a filesystem growing under statvfs) is none in use, not a wrap-around
+        const long pctFree = std::lround(static_cast<double>(freeSpaceKB) / static_cast<double>(totalSpaceKB) * 100.0);
+        pctFull = (pctFree >= 100) ? 0 : static_cast<uint32_t>(100 - pctFree);
     }
     LOG_DEBUG ("%s: Percent Full = %u (from free space KB = %" PRIu64 " , total space KB = %" PRIu64 ")",__FUNCTION__,pctFull,freeSpaceKB,totalSpaceKB);
 
@@ -1202,7 +1210,7 @@ bool DownloadManager::cbDownloadStatusQuery(LSHandle* lshandle, LSMessage *msg, 
     }
 
     ticket_id = root["ticket"].asNumber<int64_t>();
-    subscribeKey = ConvertToString<long>(ticket_id);
+    subscribeKey = subscriptionKey(ticket_id);
     LOG_DEBUG ("DownloadStatusQuery : ticket - %lu ", ticket_id);
 
     //retrieve the info of this ticket from download manager's task map
@@ -1220,13 +1228,12 @@ bool DownloadManager::cbDownloadStatusQuery(LSHandle* lshandle, LSMessage *msg, 
 Done:
 
     pbnjson::JValue responseRoot = pbnjson::Object();
-    std::string lbuff;
     responseRoot.put("ticket", (int64_t)ticket_id);
     if (fromTicketMap)
     {
         responseRoot.put("url", task.url);
 
-        lbuff = Utils::toString(task.bytesCompleted);
+        std::string lbuff = Utils::toString(task.bytesCompleted);
         responseRoot.put("amountReceived", (int32_t)(task.bytesCompleted));
         responseRoot.put("e_amountReceived", lbuff);
 
@@ -1480,6 +1487,7 @@ bool DownloadManager::cbUpload (LSHandle* lshandle, LSMessage* msg, void* user_d
     if (!jo_cookies.isNull()) {
         for (const pbnjson::JValue::KeyValue &cookie : jo_cookies.children())
         {
+            // cppcheck-suppress useStlAlgorithm ; std::transform over pbnjson's children() range reads worse
             cookies.push_back(std::pair<std::string,std::string>(cookie.first.asString(),
                                                                 cookie.second.asString()));
         }
@@ -1637,12 +1645,9 @@ bool DownloadManager::cbConnectionManagerConnectionStatus(LSHandle* lshandle, LS
     if (root.hasKey("wifi"))
     {
         std::string state = topLevelObject["state"].asString();
-        std::string onInternet;
         if (topLevelObject.hasKey("state"))
         {
-            onInternet = topLevelObject["onInternet"].asString();
-            if (!topLevelObject.hasKey("onInternet"))
-                onInternet = "no";
+            const std::string onInternet = topLevelObject.hasKey("onInternet") ? topLevelObject["onInternet"].asString() : std::string("no");
 
             if (state == "connected" && onInternet == "yes")
             {
@@ -1666,12 +1671,9 @@ bool DownloadManager::cbConnectionManagerConnectionStatus(LSHandle* lshandle, LS
     if (root.hasKey("wired"))
     {
         std::string state = topLevelObject["state"].asString();
-        std::string onInternet;
         if (topLevelObject.hasKey("state"))
         {
-            onInternet = topLevelObject["onInternet"].asString();
-            if (!topLevelObject.hasKey("onInternet"))
-                onInternet = "no";
+            const std::string onInternet = topLevelObject.hasKey("onInternet") ? topLevelObject["onInternet"].asString() : std::string("no");
 
             if (state == "connected" && onInternet == "yes")
             {

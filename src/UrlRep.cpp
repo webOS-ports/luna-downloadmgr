@@ -18,10 +18,11 @@
 
 #include "UrlRep.h"
 
-#define URI_TEXT_RANGE_TO_STRING(textRange)                               \
-    textRange.first ? std::string(textRange.first,                        \
-                                  textRange.afterLast - textRange.first)  \
-    : std::string()
+static std::string uriTextRangeToString(const UriTextRangeA& textRange)
+{
+    return textRange.first ? std::string(textRange.first, textRange.afterLast - textRange.first)
+                           : std::string();
+}
 
 UrlRep UrlRep::fromUrl(const char* uri)
 {
@@ -49,11 +50,11 @@ UrlRep UrlRep::fromUrl(const char* uri)
         return urlRep;
     }
 
-    urlRep.scheme = URI_TEXT_RANGE_TO_STRING(uriA.scheme);
-    urlRep.userInfo = URI_TEXT_RANGE_TO_STRING(uriA.userInfo);
-    urlRep.host = URI_TEXT_RANGE_TO_STRING(uriA.hostText);
-    urlRep.port = URI_TEXT_RANGE_TO_STRING(uriA.portText);
-    urlRep.fragment = URI_TEXT_RANGE_TO_STRING(uriA.fragment);
+    urlRep.scheme = uriTextRangeToString(uriA.scheme);
+    urlRep.userInfo = uriTextRangeToString(uriA.userInfo);
+    urlRep.host = uriTextRangeToString(uriA.hostText);
+    urlRep.port = uriTextRangeToString(uriA.portText);
+    urlRep.fragment = uriTextRangeToString(uriA.fragment);
 
     UriPathSegmentA* tmpPath = uriA.pathHead;
     while (tmpPath) {
@@ -61,12 +62,12 @@ UrlRep UrlRep::fromUrl(const char* uri)
             urlRep.pathOnly = urlRep.path;
         }
         urlRep.path += "/";
-        urlRep.path += URI_TEXT_RANGE_TO_STRING(tmpPath->text);
+        urlRep.path += uriTextRangeToString(tmpPath->text);
         tmpPath = tmpPath->next;
     }
 
     if (uriA.pathTail)
-        urlRep.resource = URI_TEXT_RANGE_TO_STRING((uriA.pathTail)->text);
+        urlRep.resource = uriTextRangeToString((uriA.pathTail)->text);
 
     if (uriA.query.first) {
         // uriDissectQueryMallocA() leaves *queryList untouched when it fails

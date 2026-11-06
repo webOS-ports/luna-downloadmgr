@@ -30,8 +30,9 @@ and x86-64, and on both gcc and clang.
 is invisible on aarch64 and x86-64 and silently corrupts the rest of the
 argument list on armv7, which is exactly the bug class this component shipped.
 
-`_FORTIFY_SOURCE` earns its keep on its own. Reintroducing the unbounded
-`strncpy` in `MemStringToBytes()` and running the unit tests gives:
+`_FORTIFY_SOURCE` earns its keep on its own. Putting back the unbounded
+`strncpy` that `MemStringToBytes()` once had (it has no buffer at all now) and
+running the unit tests gave:
 
 ```
 [ RUN      ] MemStringToBytes.LongDigitRunsDoNotOverflowTheBuffer
@@ -88,6 +89,17 @@ ctest --test-dir build --output-on-failure
   `filename=`, the per-part `Content-Type`, and that a part with no content type
   gets no empty `Content-Type` header. Also that a buffer upload's body survives
   its source `std::string` going out of scope.
+
+- `test_updates` — the messages a download or upload subscriber gets after
+  the first reply: that each goes out with `returnValue: true` (a caller that
+  goes by returnValue took the first progress message as a failure), that
+  the object the history db stores is left without it, and that the progress
+  messages, built with pbnjson now, carry exactly what the hand-pasted
+  strings did, 32-bit `amount*` fields included.
+
+- `test_transferfile` — `openTransferFile()`, how the daemon opens a
+  download's file: never through a symbolic link, in any mode, the descriptor
+  close-on-exec, and `wb`/`ab`/`r+b`/`rb` doing what `fopen()` did.
 
 `tests/unit/test_support.cpp` supplies `gMainLoop`, which the daemon defines in
 `Main.cpp`. The tests link `LunaDownloadMgrCore`, which is every source *except*
@@ -226,6 +238,26 @@ unnoticed.
 
 With no `--sysroot` it runs cppcheck only, which still catches a useful amount
 with no cross-compile setup.
+
+### Known analyzer reports that are not defects
+
+`gcc -fanalyzer` (GCC 15) runs on a real compile at `-O0` and `-O2`; with
+`-fsyntax-only` it analyses nothing. What it still reports:
+
+- `-Wanalyzer-use-of-uninitialized-value` on functions that return a
+  `std::string` or `pbnjson::JValue` (`Utils.cpp`, `JUtil.cpp`,
+  `DownloadUtils.cpp`, `DownloadTask.cpp`, ...). The return slot is built by
+  the callee's constructor, which the analyzer does not model for C++; the
+  check is turned off in `tools/analyze.sh` for that reason. ASan, UBSan and
+  valgrind see no uninitialised read in those paths.
+- `-Wanalyzer-malloc-leak` inside `boost::regex` (`basic_regex_creator`) and
+  `-Wanalyzer-infinite-loop` inside libstdc++'s `std::list::remove`, both at
+  `-O2`. Third-party code, reported and not changed here.
+
+Everything else - cppcheck, clang-tidy, `clang --analyze` with the `alpha`
+core/unix/security checkers, flawfinder and Coccinelle - reports nothing.
+Inline suppressions (`cppcheck-suppress`, `flawfinder: ignore`, `NOLINT`)
+each carry the reason next to them.
 
 ## Warnings
 

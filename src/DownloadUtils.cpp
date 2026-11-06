@@ -28,6 +28,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/statfs.h>
+#include <fcntl.h>
+#include <errno.h>
 
 #include <iostream>
 #include <sstream>
@@ -35,18 +37,37 @@
 #include <string>
 #include <algorithm>
 
-bool filecopy (const std::string& srcFile, const std::string& destFile)
+FILE* openTransferFile(const std::string& path, const char* mode)
 {
-    std::ifstream s;
-    std::ofstream d;
-    s.open (srcFile.c_str(), std::ios::binary);
-    d.open (destFile.c_str(), std::ios::binary);
-    if (!s.is_open() || !d.is_open())
-        return false;
-    d << s.rdbuf ();
-    s.close();
-    d.close();
-    return true;
+    int flags = 0;
+    if (mode == NULL) {
+        errno = EINVAL;
+        return NULL;
+    }
+    const std::string m(mode);
+    if (m == "wb")
+        flags = O_WRONLY | O_CREAT | O_TRUNC;
+    else if (m == "ab")
+        flags = O_WRONLY | O_CREAT | O_APPEND;
+    else if (m == "r+b")
+        flags = O_RDWR;
+    else if (m == "rb")
+        flags = O_RDONLY;
+    else {
+        errno = EINVAL;
+        return NULL;
+    }
+    // 0666 as fopen() gives, less the umask.
+    int fd = ::open(path.c_str(), flags | O_NOFOLLOW | O_CLOEXEC, 0666);  // flawfinder: ignore - this is the no-follow open
+    if (fd == -1)
+        return NULL;
+    FILE* fp = fdopen(fd, mode);
+    if (fp == NULL) {
+        int saved = errno;
+        (void) ::close(fd);
+        errno = saved;
+    }
+    return fp;
 }
 
 bool doesExistOnFilesystem(const char * pathAndFile) {
@@ -141,7 +162,6 @@ int splitStringOnKey(std::vector<std::string>& returnSplitSubstrings,const std::
 {
     std::string::size_type start = 0;
     std::string::size_type mark = 0;
-    std::string extracted;
 
     int i=0;
     while (start < baseStr.size()) {
@@ -154,7 +174,7 @@ int splitStringOnKey(std::vector<std::string>& returnSplitSubstrings,const std::
         if (mark == std::string::npos)
             mark = baseStr.size();
 
-        extracted = baseStr.substr(start,mark-start);
+        const std::string extracted = baseStr.substr(start,mark-start);
         if (extracted.size() > 0) {
             //valid string...add it
             returnSplitSubstrings.push_back(extracted);
@@ -189,40 +209,69 @@ std::string getHtml5DatabaseFolderNameForApp(const std::string& appId,std::strin
     return r;
 }
 
+std::string subscriptionKey(unsigned long ticket)
+{
+    return std::to_string(ticket);
+}
+
+pbnjson::JValue downloadProgressJSON(unsigned long ticket, uint64_t received, uint64_t total)
+{
+    pbnjson::JValue j = pbnjson::Object();
+    j.put("ticket", static_cast<int64_t>(ticket));
+    j.put("amountReceived", static_cast<int64_t>(static_cast<uint32_t>(received)));
+    j.put("e_amountReceived", ConvertToString<uint64_t>(received));
+    j.put("amountTotal", static_cast<int64_t>(static_cast<uint32_t>(total)));
+    j.put("e_amountTotal", ConvertToString<uint64_t>(total));
+    return j;
+}
+
+pbnjson::JValue uploadProgressJSON(unsigned long ticket, uint64_t sent, uint64_t total)
+{
+    // The upload's counts went out as int32_t, the download's as uint32_t; each is kept as it was.
+    pbnjson::JValue j = pbnjson::Object();
+    j.put("ticket", static_cast<int64_t>(ticket));
+    j.put("amountSent", static_cast<int64_t>(static_cast<int32_t>(static_cast<uint32_t>(sent))));
+    j.put("e_amountSent", ConvertToString<uint64_t>(sent));
+    j.put("amountTotal", static_cast<int64_t>(static_cast<int32_t>(static_cast<uint32_t>(total))));
+    j.put("e_amountTotal", ConvertToString<uint64_t>(total));
+    return j;
+}
+
+pbnjson::JValue subscriptionUpdate(const pbnjson::JValue& payload)
+{
+    // A copy: the callers go on to store the same object in the history db, which has never had
+    // returnValue in its rows.
+    pbnjson::JValue j = payload.duplicate();
+    if (j.isObject() && !j.hasKey("returnValue"))
+        j.put("returnValue", true);
+    return j;
+}
+
 int postSubscriptionUpdate(const std::string& key,const std::string& postMessage,LSHandle * serviceHandle)
 {
     if (serviceHandle == NULL)
-        return true;            //nothing to do
+        return 0;               //nothing to do, no one to tell
 
     LSSubscriptionIter *iter=NULL;
     LSError lserror;
     LSErrorInit(&lserror);
-    bool retVal = false;
-    //acquire the subscription and reply.
-
-//  LOG_DEBUG ("DL-UPDATE: %s",postMessage.c_str());
     int rc=0;
 
-    if (serviceHandle) {
-        retVal = LSSubscriptionAcquire(serviceHandle, key.c_str(), &iter, &lserror);
-        if (retVal) {
-        while (LSSubscriptionHasNext(iter)) {
-            LSMessage *message = LSSubscriptionNext(iter);
-            if (!LSMessageReply(serviceHandle,message,postMessage.c_str(),&lserror)) {
+    //acquire the subscription and reply.
+    if (!LSSubscriptionAcquire(serviceHandle, key.c_str(), &iter, &lserror)) {
+        LSErrorFree(&lserror);
+        return 0;
+    }
+    while (LSSubscriptionHasNext(iter)) {
+        LSMessage *message = LSSubscriptionNext(iter);
+        if (!LSMessageReply(serviceHandle,message,postMessage.c_str(),&lserror)) {
             LSErrorPrint(&lserror,stderr);
             LSErrorFree(&lserror);
             //mark the return code bitfield to indicate at least one bus failure
             rc |= ERRMASK_POSTSUBUPDATE;
-            }
-        }
-
-        LSSubscriptionRelease(iter);
-        }
-        else {
-        LSErrorFree(&lserror);
         }
     }
-
+    LSSubscriptionRelease(iter);
     return rc;
 }
 
@@ -249,37 +298,27 @@ bool processSubscription(LSHandle * serviceHandle, LSMessage * message,const std
 
 uint32_t removeSubscriptions(const std::string& key,LSHandle * serviceHandle)
 {
-    if (key.size() == 0)
-        return false;
-
-    if (serviceHandle == NULL)
-        return false;
+    if (key.empty() || serviceHandle == NULL)
+        return 0;
 
     LSSubscriptionIter *iter=NULL;
     LSError lserror;
     LSErrorInit(&lserror);
 
     //acquire the subscription
-    uint32_t rc=0;
-    bool retVal = false;
-
-    if (serviceHandle) {
-        retVal = LSSubscriptionAcquire(serviceHandle, key.c_str(), &iter, &lserror);
-        if (retVal) {
-            while (LSSubscriptionHasNext(iter)) {
-                if (!LSSubscriptionNext(iter)) {
-                    break;
-                }
-                LSSubscriptionRemove(iter);
-                    ++rc;
-            }
-            LSSubscriptionRelease(iter);
-        }
-        else {
-            LSErrorFree(&lserror);
-        }
+    if (!LSSubscriptionAcquire(serviceHandle, key.c_str(), &iter, &lserror)) {
+        LSErrorFree(&lserror);
+        return 0;
     }
-
+    uint32_t rc=0;
+    while (LSSubscriptionHasNext(iter)) {
+        if (!LSSubscriptionNext(iter)) {
+            break;
+        }
+        LSSubscriptionRemove(iter);
+        ++rc;
+    }
+    LSSubscriptionRelease(iter);
     return rc;
 }
 

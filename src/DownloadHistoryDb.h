@@ -49,29 +49,14 @@ public:
         DownloadHistory() : m_ticket(0) {}
 
         //TODO: no longer needed; (once used for special processing during cloning)
-        DownloadHistory(const DownloadHistory& c) {
-            m_ticket = c.m_ticket;
-            m_owner = c.m_owner;
-            m_interface = c.m_interface;
-            m_state = c.m_state;
-            m_downloadRecordJsonString = c.m_downloadRecordJsonString;
-        }
+        DownloadHistory(const DownloadHistory& c) = default;
         //TODO: no longer needed; (once used for special processing during cloning)
-        DownloadHistory& operator=(const DownloadHistory& c) {
-            if (this == &c)
-                return *this;
-            m_ticket = c.m_ticket;
-            m_owner = c.m_owner;
-            m_interface = c.m_interface;
-            m_state = c.m_state;
-            m_downloadRecordJsonString = c.m_downloadRecordJsonString;
-            return *this;
-        }
+        DownloadHistory& operator=(const DownloadHistory& c) = default;
     };
 
     static DownloadHistoryDb* instance();
 
-    void addHistory(unsigned long ticket,const std::string& caller,const std::string interface, const std::string& state,const std::string& downloadRecordString);
+    void addHistory(unsigned long ticket,const std::string& caller,const std::string& interface, const std::string& state,const std::string& downloadRecordString);
     void addHistory(const DownloadHistory& history);
 
     int getDownloadHistoryFull(unsigned long ticket,std::string& r_caller,std::string& r_interface, std::string& r_state,std::string& r_history);

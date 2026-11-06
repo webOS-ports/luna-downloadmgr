@@ -16,6 +16,8 @@
 
 #include "DownloadSettings.h"
 
+#include <climits>
+
 #include <cstdio>
 #include <cstdlib>
 #include <inttypes.h>
@@ -32,20 +34,6 @@
 
 static const char* kDownloadSettingsFile = "/etc/palm/downloadManager.conf";
 static const char* kDownloadSettingsFilePlatform = "/etc/palm/downloadManager-platform.conf";
-
-#if 0
-
-#define SETTINGS_TRACE(...) \
-do { \
-    fprintf(stdout, "DownloadSettings:: " ); \
-    fprintf(stdout, __VA_ARGS__); \
-} while (0)
-
-#else
-
-#define SETTINGS_TRACE(...) (void)0
-
-#endif
 
 static bool localSpaceOnFs(const std::string& path,uint64_t& spaceFreeKB,uint64_t& spaceTotalKB,
                             bool useFake = false,uint64_t fakeFreeSize = 0)
@@ -128,28 +116,28 @@ DownloadSettings::~DownloadSettings()
 
 #define KEY_STRING(cat,name,var) \
 {\
-    gchar* _vs;\
+    gchar* _vs = NULL;\
     GError* _error = 0;\
     _vs=g_key_file_get_string(keyfile,cat,name,&_error);\
-    if( !_error && _vs ) { var=(const char*)_vs; g_free(_vs); }\
-    else g_error_free(_error); \
+    if( !_error && _vs ) { (var)=_vs; g_free(_vs); }\
+    else if (_error) g_error_free(_error); \
 }
 
 #define KEY_MEMORY_STRING(cat,name,var) \
 {\
-    gchar* _vs;\
+    gchar* _vs = NULL;\
     GError* _error = 0;\
     _vs=g_key_file_get_string(keyfile,cat,name,&_error);\
-    if( !_error && _vs ) { var=::MemStringToBytes((const char*)_vs); g_free(_vs); }\
-    else g_error_free(_error); \
+    if( !_error && _vs ) { (var)=::MemStringToBytes(_vs); g_free(_vs); }\
+    else if (_error) g_error_free(_error); \
 }
 
 #define KEY_BOOLEAN(cat,name,var) \
 {\
-    gboolean _vb;\
+    gboolean _vb = FALSE;\
     GError* _error = 0;\
     _vb=g_key_file_get_boolean(keyfile,cat,name,&_error);\
-    if( !_error ) { var=_vb; }\
+    if( !_error ) { (var)=_vb; }\
     else g_error_free(_error); \
 }
 
@@ -158,7 +146,7 @@ DownloadSettings::~DownloadSettings()
     int _v = 0;\
     GError* _error = 0;\
     _v=g_key_file_get_integer(keyfile,cat,name,&_error);\
-    if( !_error ) { var=_v; }\
+    if( !_error ) { (var)=_v; }\
     else g_error_free(_error); \
 }
 
@@ -171,27 +159,27 @@ DownloadSettings::~DownloadSettings()
         _v = g_ascii_strtoull(tmp_str, NULL, 10); \
         g_free (tmp_str); \
     } \
-    if(! _error ) { var=_v; }\
+    if(! _error ) { (var)=_v; }\
     else g_error_free(_error); \
 }
 
 #define KEY_UINT32(cat,name,var) \
 { \
-    uint32_t _v;\
+    uint32_t _v = 0;\
     GError* _error = 0;\
     char * tmp_str = g_key_file_get_value(keyfile,cat,name,&_error); \
     if (tmp_str) { \
         _v = g_ascii_strtoul(tmp_str, NULL, 10); \
         g_free (tmp_str); \
     } \
-    if(! _error ) { var=_v; }\
+    if(! _error ) { (var)=_v; }\
     else g_error_free(_error); \
 }
 
 void DownloadSettings::load( )
 {
-    GKeyFile* keyfile;
-    GKeyFileFlags flags;
+    GKeyFile* keyfile = nullptr;
+    GKeyFileFlags flags = G_KEY_FILE_NONE;
     GError* error = 0;
 
     keyfile = g_key_file_new();
@@ -234,7 +222,7 @@ void DownloadSettings::load( )
 
     KEY_UINT64("Filesystem","SpaceRemainStopmarkKB",freespaceStopmarkRemainingKBytes);
 
-    if ((freespaceLowmarkFullPercent <= 0) || (freespaceLowmarkFullPercent >= 100))
+    if ((freespaceLowmarkFullPercent == 0) || (freespaceLowmarkFullPercent >= 100))
     {
         freespaceLowmarkFullPercent = FREESPACE_LOWMARK_FULL_PCT;
     }
@@ -323,44 +311,43 @@ void DownloadSettings::load( )
 }
 
 
-// Expands "1MB" --> 1048576, "2k" --> 2048, etc.
+// Expands "1MB" --> 1048576, "2k" --> 2048, etc. A value too large for an unsigned long, before or
+// after the suffix, is ULONG_MAX: atol() was undefined past LONG_MAX, and the multiplication wrapped,
+// on armv7 already from "4096M", which came out as 0.
 unsigned long MemStringToBytes( const char* ptr )
 {
-    char number[32];
-    unsigned long r = 0;
-    const char* s= ptr;
-
     if (!ptr)
         return 0;
 
     // isalnum()/isdigit() are only defined for unsigned char values and EOF
     while( *ptr && !isalnum((unsigned char)*ptr) ) // skip whitespace
         ptr++;
-    s=ptr;
 
-    while( isdigit((unsigned char)*ptr) )
+    unsigned long r = 0;
+    bool tooLarge = false;
+    while( isdigit((unsigned char)*ptr) ) {
+        const unsigned long digit = (unsigned long)(*ptr - '0');
+        if (r > (ULONG_MAX - digit) / 10)
+            tooLarge = true;
+        else
+            r = r * 10 + digit;
         ptr++;
+    }
+    if (tooLarge)
+        return ULONG_MAX;
 
-    // A run of 32 or more digits overflowed number[]: strncpy() wrote past the
-    // end of the buffer and number[ptr-s]=0 then stored the terminator further
-    // out still. Such a value cannot fit in an unsigned long anyway, so
-    // truncate the copy to what the buffer holds.
-    size_t digits = (size_t)(ptr - s);
-    if (digits > sizeof(number) - 1)
-        digits = sizeof(number) - 1;
-
-    memcpy( number, s, digits );
-    number[digits]=0;
-
-    r = (unsigned long)atol(number);
+    unsigned long multiplier = 1;
     switch(*ptr)
     {
     case 'M':
-        r *= 1024 * 1024; break;
+        multiplier = 1024ul * 1024ul; break;
     case 'k':
     case 'K':
-        r *= 1024 ; break;
+        multiplier = 1024ul; break;
+    default:
+        break;
     }
-
-    return r;
+    if (r > ULONG_MAX / multiplier)
+        return ULONG_MAX;
+    return r * multiplier;
 }
